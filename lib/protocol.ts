@@ -48,6 +48,8 @@ export type PlayerView = {
   /** Finished the input of the current mode. */
   done: boolean;
   genome: Genome | null;
+  /** Born stage: the visitor pushed their betta from the phone into the tank. */
+  released: boolean;
 };
 
 export type SessionState = {
@@ -79,6 +81,8 @@ export type ClientToServer = {
   /** `start` clears earlier events (feed restarted after a reload); `done` = the 30s are over. */
   feed: (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => void;
   effort: (effort: { amount: number }) => void;
+  /** Born stage: send my betta from the phone to the screen. */
+  release: () => void;
   steer: (steer: Steer) => void;
 };
 

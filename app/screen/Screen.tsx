@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import type { AdminCommand, Hello } from "@/lib/protocol";
+import { Born } from "./scenes/Born";
 import styles from "./screen.module.css";
 
 type Props = {
@@ -58,23 +59,26 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
 
   return (
     <main className={styles.root}>
-      <section className={styles.stage}>
-        <p className={styles.stageName}>{state?.stage ?? "…"}</p>
-        {state?.stage === "input" && (
-          <p className={styles.join}>
-            {state.mode === "A" ? "look at your phone" : "answer on your phone"}
-            <br />
-            <span className={styles.count}>{players.filter((p) => p.done).length}</span> / {players.length} done
-          </p>
-        )}
-        {state?.stage === "lobby" && (
-          <p className={styles.join}>
-            {joinUrl}
-            <br />
-            <span className={styles.count}>{online}</span> in the water
-          </p>
-        )}
-      </section>
+      {state?.stage === "born" && <Born players={players} />}
+      {state?.stage !== "born" && (
+        <section className={styles.stage}>
+          <p className={styles.stageName}>{state?.stage ?? "…"}</p>
+          {state?.stage === "input" && (
+            <p className={styles.join}>
+              {state.mode === "A" ? "look at your phone" : "answer on your phone"}
+              <br />
+              <span className={styles.count}>{players.filter((p) => p.done).length}</span> / {players.length} done
+            </p>
+          )}
+          {state?.stage === "lobby" && (
+            <p className={styles.join}>
+              {joinUrl}
+              <br />
+              <span className={styles.count}>{online}</span> in the water
+            </p>
+          )}
+        </section>
+      )}
 
       {hud && (
         <aside className={styles.hud}>
@@ -91,7 +95,10 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
               <li key={p.id}>
                 {p.connected ? "●" : "○"} {p.id.slice(0, 6)} · {p.phase}
                 {p.done ? " · done" : ""}
-                {p.genome && ` · ${Object.values(p.genome).map((v) => v.toFixed(2)).join(" ")}`}
+                {p.genome &&
+                  ` · ${Object.values(p.genome)
+                    .map((v) => v.toFixed(2))
+                    .join(" ")}`}
               </li>
             ))}
           </ul>

@@ -102,6 +102,13 @@ type Genome = {
 
 폰은 이벤트 로그를 배치로 서버에 보내고, 서버가 genome을 계산한다.
 
+### 2-3b. born 단계 (11/19 v0 구현: `app/_components/BettaShape.tsx`, `app/phone/Release.tsx`, `app/screen/scenes/Born.tsx`)
+
+- 확정: 와이어프레임 도형(SVG), **폰에서 내보내기**, 경계·사교성도 처음부터 보이게, 폰에는 내 베타 미리보기.
+- genome → 모양: hue = 몸·지느러미 색, saturation = 채도, finLength = 꼬리 부채 반지름·등/뒷지느러미 높이, boundary = 몸 둘레 점선 막 크기·진하기, sociability = 꼬리 흔드는 리듬(느리고 무거움 ↔ 빠르고 들뜸).
+- 흐름: born이 되면 폰에 내 베타 + `#XXXX` 태그. 위로 밀면(또는 버튼) 폰 위로 날아가고, 큰 화면 해당 칸에 아래에서 헤엄쳐 들어온다. 안 보낸 칸은 깜빡이는 점.
+- 칸은 이미 격자 배치라 다음 단계(칸막이 큐브)에서 그대로 쓸 수 있다.
+
 ### 2-4. open 행동 규칙
 
 - 거리 `d = |genomeA − genomeB|` (5차원).

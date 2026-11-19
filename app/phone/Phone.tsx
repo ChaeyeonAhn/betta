@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
-import { getPlayerId } from "@/lib/playerId";
+import { getPlayerId, shortTag } from "@/lib/playerId";
 import type { FeedEvent, Hello } from "@/lib/protocol";
 import { FakeFeed } from "./modes/FakeFeed";
+import { Release } from "./Release";
 import styles from "./phone.module.css";
 
 export function Phone({ room, socketUrl }: { room: string; socketUrl: string | null }) {
@@ -26,6 +27,17 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   if (me.phase === "input" && !me.done) {
     if (state.mode === "A") return <FakeFeed send={sendFeed} />;
     return <Centered dim>Mode B · dial pad (not built yet)</Centered>;
+  }
+
+  if (state.stage === "born" && me.genome) {
+    return (
+      <Release
+        genome={me.genome}
+        tag={shortTag(me.id)}
+        released={me.released}
+        onRelease={() => socket.current?.emit("release")}
+      />
+    );
   }
 
   return (

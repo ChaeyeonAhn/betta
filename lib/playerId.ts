@@ -17,3 +17,8 @@ export function getPlayerId(): string {
   } catch {}
   return id;
 }
+
+/** Short tag shown under a betta on both the phone and the screen, e.g. "#C87B". */
+export function shortTag(id: string): string {
+  return `#${id.replace(/[^a-z0-9]/gi, "").slice(0, 4).toUpperCase()}`;
+}

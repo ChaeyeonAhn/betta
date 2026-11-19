@@ -47,6 +47,7 @@ type Player = {
   feed: FeedEvent[];
   feedDone: boolean;
   genome: Genome | null;
+  released: boolean;
   effort: number;
 };
 
@@ -68,6 +69,7 @@ function newPlayer(id: string): Player {
     feed: [],
     feedDone: false,
     genome: null,
+    released: false,
     effort: 0,
   };
 }
@@ -138,6 +140,7 @@ function snapshot(): SessionState {
       phase: p.phase,
       done: isDone(p),
       genome: p.genome,
+      released: p.released,
     })),
     effort: { total: session.effortTotal, threshold: 0 },
     deadline: session.deadline,
@@ -254,6 +257,13 @@ io.on("connection", (socket) => {
     // TODO(11/22): decay, threshold, auto-break, deadline.
     player.effort += amount;
     session.effortTotal += amount;
+    scheduleBroadcast();
+  });
+
+  socket.on("release", () => {
+    const player = playerOf(socket);
+    if (!player || !player.genome || player.released) return;
+    player.released = true;
     scheduleBroadcast();
   });
 
