@@ -1,0 +1,234 @@
+/* Wireframe on purpose: white, 1px black lines, grey text, tinted image blocks. */
+
+.root {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  color: #111;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  text-align: left;
+  overflow: hidden;
+}
+
+.root button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  height: 2px;
+  background: #111;
+  transform-origin: left;
+}
+
+.header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #111;
+}
+
+.app {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 1px solid #111;
+}
+
+.root .postButton {
+  padding: 8px 28px;
+  border: 1px solid #111;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.feed {
+  position: absolute;
+  top: 52px;
+  bottom: calc(57px + env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.post {
+  padding: 12px 16px 16px;
+  border-bottom: 1px solid #ddd;
+}
+
+.author {
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.image {
+  aspect-ratio: 1;
+  border: 1px solid #111;
+}
+
+.postFoot {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 10px;
+  color: #444;
+}
+
+.root .like {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* Banners */
+
+.banners {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.banner {
+  display: flex;
+  align-items: stretch;
+  background: #fff;
+  border: 1px solid #111;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  pointer-events: auto;
+  animation: drop 180ms ease-out;
+}
+
+@keyframes drop {
+  /* Transform only: if animations are paused (background tab), the banner is still readable. */
+  from {
+    transform: translateY(-12px);
+  }
+}
+
+.root .bannerBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.bannerApp {
+  color: #777;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.root .bannerClose {
+  width: 40px;
+  border-left: 1px solid #ddd;
+  color: #777;
+  font-size: 18px;
+}
+
+.more {
+  align-self: center;
+  padding: 2px 8px;
+  background: #111;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+/* Card */
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.card {
+  width: 100%;
+  max-width: 320px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #111;
+  border-radius: 12px;
+}
+
+.cardTitle {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.cardImage {
+  height: 140px;
+  border: 1px solid #111;
+}
+
+.cardBody {
+  margin: 10px 0 0;
+  color: #444;
+}
+
+.cardActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.root .action,
+.root .actionGhost {
+  flex: 1;
+  padding: 10px 0;
+  border: 1px solid #111;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.root .action {
+  background: #111;
+  color: #fff;
+}
+
+.root .actionGhost {
+  color: #555;
+}

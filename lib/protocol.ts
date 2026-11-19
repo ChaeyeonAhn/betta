@@ -4,7 +4,7 @@
 export const STAGES = ["lobby", "input", "born", "grid", "open"] as const;
 export type Stage = (typeof STAGES)[number];
 
-/** A = 1–10 dial pad questions, B = fake SNS feed. Set per session. */
+/** A = 30s fake SNS feed + notification banners, B = 1–10 dial pad questions. Set per session. */
 export type Mode = "A" | "B";
 
 /**
@@ -21,14 +21,24 @@ export type Genome = {
   sociability: number; // 0–1 schooling tendency
 };
 
+/** What a post or notification is about. Each tag feeds one or two genome axes (lib/genome.ts). */
+export type FeedTag = "brag" | "mood" | "friend" | "stranger" | "self";
+
 export type FeedEvent = {
-  kind: "tap" | "ignore" | "like" | "dwell" | "post";
-  /** Axis tag of the post/notification, e.g. "brag", "stranger", "friend", "mood". */
-  tag: string;
+  /**
+   * dwell   a post was on screen (ms)        tap      a banner was opened
+   * ignore  a banner timed out or was swiped like     ♡ on a post or card
+   * accept / decline  a stranger's request    reply    answered a friend
+   * close   closed a card without reacting    post     pressed "+ Post"
+   */
+  kind: "dwell" | "tap" | "ignore" | "like" | "accept" | "decline" | "reply" | "close" | "post";
+  tag: FeedTag;
   /** ms since the feed started. */
   t: number;
   /** ms spent, for dwell. */
   ms?: number;
+  /** 0–1 hue of the post, for dwell on mood posts. */
+  hue?: number;
 };
 
 export type PlayerView = {
@@ -66,7 +76,8 @@ export type ClientToServer = {
   hello: (hello: Hello) => void;
   admin: (command: AdminCommand) => void;
   answer: (answer: { q: number; value: number }) => void;
-  feed: (batch: { events: FeedEvent[] }) => void;
+  /** `start` clears earlier events (feed restarted after a reload); `done` = the 30s are over. */
+  feed: (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => void;
   effort: (effort: { amount: number }) => void;
   steer: (steer: Steer) => void;
 };
@@ -78,4 +89,5 @@ export type ServerToClient = {
 };
 
 export const QUESTION_COUNT = 5;
+export const FEED_MS = 30_000;
 export const DEFAULT_ROOM = "betta";

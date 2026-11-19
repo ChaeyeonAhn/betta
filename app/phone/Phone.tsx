@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import { getPlayerId } from "@/lib/playerId";
-import type { Hello } from "@/lib/protocol";
+import type { FeedEvent, Hello } from "@/lib/protocol";
+import { FakeFeed } from "./modes/FakeFeed";
 import styles from "./phone.module.css";
 
 export function Phone({ room, socketUrl }: { room: string; socketUrl: string | null }) {
@@ -11,23 +12,36 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   const [hello, setHello] = useState<Hello | null>(null);
   useEffect(() => setHello({ role: "phone", room, playerId: getPlayerId() }), [room]);
 
-  const { state, connected, rejected } = useBetta(hello, socketUrl);
+  const { state, connected, rejected, socket } = useBetta(hello, socketUrl);
   const me = state?.players.find((p) => hello?.role === "phone" && p.id === hello.playerId);
 
+  const sendFeed = useCallback(
+    (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => socket.current?.emit("feed", batch),
+    [socket],
+  );
+
+  if (rejected) return <Centered>{rejected}</Centered>;
+  if (!connected || !me || !state) return <Centered dim>connecting…</Centered>;
+
+  if (me.phase === "input" && !me.done) {
+    if (state.mode === "A") return <FakeFeed send={sendFeed} />;
+    return <Centered dim>Mode B · dial pad (not built yet)</Centered>;
+  }
+
+  return (
+    <Centered>
+      <p className={styles.title}>{me.phase === "waiting" ? "입수 완료" : me.done ? "Look up." : me.phase}</p>
+      <p className={styles.dim}>
+        stage {state.stage} · mode {state.mode}
+      </p>
+    </Centered>
+  );
+}
+
+function Centered({ children, dim }: { children: React.ReactNode; dim?: boolean }) {
   return (
     <main className={styles.root}>
-      {rejected ? (
-        <p>{rejected}</p>
-      ) : !connected || !me ? (
-        <p className={styles.dim}>connecting…</p>
-      ) : (
-        <>
-          <p className={styles.title}>{me.phase === "waiting" ? "입수 완료" : me.phase}</p>
-          <p className={styles.dim}>
-            stage {state?.stage} · mode {state?.mode}
-          </p>
-        </>
-      )}
+      <div className={dim ? styles.dim : undefined}>{children}</div>
     </main>
   );
 }

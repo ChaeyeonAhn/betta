@@ -60,6 +60,13 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
     <main className={styles.root}>
       <section className={styles.stage}>
         <p className={styles.stageName}>{state?.stage ?? "…"}</p>
+        {state?.stage === "input" && (
+          <p className={styles.join}>
+            {state.mode === "A" ? "look at your phone" : "answer on your phone"}
+            <br />
+            <span className={styles.count}>{players.filter((p) => p.done).length}</span> / {players.length} done
+          </p>
+        )}
         {state?.stage === "lobby" && (
           <p className={styles.join}>
             {joinUrl}
@@ -84,6 +91,7 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
               <li key={p.id}>
                 {p.connected ? "●" : "○"} {p.id.slice(0, 6)} · {p.phase}
                 {p.done ? " · done" : ""}
+                {p.genome && ` · ${Object.values(p.genome).map((v) => v.toFixed(2)).join(" ")}`}
               </li>
             ))}
           </ul>

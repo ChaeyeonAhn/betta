@@ -24,6 +24,7 @@ import {
   type SessionState,
   type Stage,
 } from "../lib/protocol.ts";
+import { genomeFromAnswers, genomeFromFeed } from "../lib/genome.ts";
 
 const PORT = Number(process.env.PORT) || 4000;
 const ROOM = process.env.ROOM || DEFAULT_ROOM;
@@ -72,7 +73,8 @@ function newPlayer(id: string): Player {
 }
 
 function isDone(player: Player) {
-  return session.mode === "A" ? player.answers.every((a) => a !== null) : player.feedDone;
+  // A = 30s feed, B = five dial pad answers.
+  return session.mode === "A" ? player.feedDone : player.answers.every((a) => a !== null);
 }
 
 /** Phase a player who is with the group should be in for the current stage. */
@@ -229,15 +231,20 @@ io.on("connection", (socket) => {
     const player = playerOf(socket);
     if (!player || q < 0 || q >= QUESTION_COUNT) return;
     player.answers[q] = Math.min(10, Math.max(1, Math.round(value)));
-    // TODO(11/20): genome from answers (lib/genome.ts).
+    if (player.answers.every((a) => a !== null)) player.genome = genomeFromAnswers(player.answers as number[]);
     scheduleBroadcast();
   });
 
-  socket.on("feed", ({ events }) => {
+  socket.on("feed", ({ events, start, done }) => {
     const player = playerOf(socket);
-    if (!player) return;
-    player.feed.push(...events);
-    // TODO(11/21): feedDone + genome from feed events.
+    if (!player || player.feedDone) return;
+    if (start) player.feed = [];
+    player.feed.push(...events.slice(0, 500));
+    if (done) {
+      player.feedDone = true;
+      player.genome = genomeFromFeed(player.feed);
+      console.log(`  genome ${player.id.slice(0, 6)} ${JSON.stringify(player.genome)}`);
+    }
     scheduleBroadcast();
   });
 
