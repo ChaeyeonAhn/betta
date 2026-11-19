@@ -17,7 +17,8 @@ import { genomeDistance } from "@/lib/genome";
 import { shortTag } from "@/lib/playerId";
 import type { Genome, PlayerView, Steer } from "@/lib/protocol";
 import styles from "./Open.module.css";
-import { STAGE_H, STAGE_W, cellCenter, useFit } from "./useFit";
+import { CELLS, bettaSlots, project } from "./grid3d";
+import { STAGE_H, STAGE_W } from "./useFit";
 
 const FISH = 150; // BettaShape width in the tank
 const FISH_H = FISH * 0.7;
@@ -30,7 +31,9 @@ type Fish = { x: number; y: number; vx: number; vy: number; wander: number; dir:
 
 export function Open({ players, socket }: { players: PlayerView[]; socket: RefObject<BettaSocket | null> }) {
   const bettas = players.filter((p) => p.genome);
-  const fit = useFit(bettas.length);
+  // Where each betta's cube was in the grid stage (stage px), so they burst out from there.
+  const slots = bettaSlots(bettas.length);
+  const cubeAt = (i: number) => project({ ...CELLS[slots[i]], z: 0.5 });
   const fish = useRef(new Map<string, Fish>());
   const els = useRef(new Map<string, HTMLDivElement>());
   const flips = useRef(new Map<string, HTMLDivElement>());
@@ -41,7 +44,7 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
   const firstFrame = fish.current.size === 0;
   bettas.forEach((p, i) => {
     if (fish.current.has(p.id)) return;
-    const c = firstFrame ? cellCenter(i, fit) : { x: Math.random() < 0.5 ? -FISH : STAGE_W + FISH, y: STAGE_H * (0.2 + Math.random() * 0.6) };
+    const c = firstFrame ? cubeAt(i) : { x: Math.random() < 0.5 ? -FISH : STAGE_W + FISH, y: STAGE_H * (0.2 + Math.random() * 0.6) };
     const away = Math.atan2(c.y - STAGE_H / 2, c.x - STAGE_W / 2) + (Math.random() - 0.5) * 0.8;
     const speed = firstFrame ? 260 + Math.random() * 160 : 160;
     const vx = firstFrame ? Math.cos(away) * speed : (c.x < 0 ? 1 : -1) * speed;
@@ -136,9 +139,9 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
     <section className={styles.root}>
       {/* The partitions fly apart once, as the scene opens. */}
       {bettas.map((p, i) => {
-        const c = cellCenter(i, fit);
-        const w = fit.size + 24;
-        const h = fit.cellH + 8;
+        const c = cubeAt(i);
+        const w = c.pxPerUnit;
+        const h = c.pxPerUnit;
         const dx = (c.x - STAGE_W / 2) * 0.6;
         const dy = (c.y - STAGE_H / 2) * 0.9 - 40;
         return (

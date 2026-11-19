@@ -3,24 +3,23 @@
   inset: 0;
 }
 
-/* One partition: a wireframe box with a little depth (offset back edge). */
-.cell {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid #5a5a5a;
-  box-shadow: 8px -8px 0 -1px #000, 8px -8px 0 0 #2e2e2e;
-}
-
-.cracks {
+.canvas {
   position: absolute;
   inset: 0;
+}
+
+.sprite {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 50% 35%;
   pointer-events: none;
+  will-change: transform;
 }
 
 .footer {
   position: absolute;
+  z-index: 20;
   left: 50%;
   bottom: 28px;
   width: 560px;
