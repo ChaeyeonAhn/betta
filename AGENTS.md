@@ -4,20 +4,31 @@ Rules for coding agents in this repository. Read this first.
 
 ## Stack
 
-Next.js 16 App Router, TypeScript, CSS Modules, MDX. pnpm, Node 24+. `three` via `@react-three/fiber` + `@react-three/drei`. `socket.io`. `tone`. `@mediapipe/tasks-vision`. No Tailwind, styled-components, state library or UI kit unless asked.
+Next.js 16 App Router, TypeScript, CSS Modules, MDX. pnpm, Node 24+ (server runs .ts directly). `three` via `@react-three/fiber` + `@react-three/drei`. `socket.io`. `tone`. `@mediapipe/tasks-vision`. No Tailwind, styled-components, state library or UI kit unless asked.
 
 ## Map
 
 ```
 app/
   page.tsx  layout.tsx  globals.css      site shell
-  <route>/page.tsx                       one folder per route
-  api/<name>/route.ts                    server endpoints, secrets from .env.local
+  screen/                                projection (/screen?room=&key=). Admin keys live here
+  phone/                                 visitor controller (/phone?room=)
+lib/
+  protocol.ts                            socket events + SessionState, shared by server and pages
+  playerId.ts                            stable per-phone id (localStorage)
+  lan.ts                                 reachable LAN IPv4s (server-only)
 hooks/
-  shared/useSocket.ts                    useSocket(room, onMessage) → { send, connected }
-socket-server.mjs                        Socket.IO relay on :4000. join(room); message({type,data}) → the rest of the room
-public/                                  static assets, mirroring app/
+  useBetta.ts                            connect, hello, latest SessionState
+server/
+  index.ts                               Socket.IO session server on :4000 (stage machine, players, effort)
+scripts/deploy-server.sh                 pnpm deploy:server: server/ + lib/ → EC2 via SSM (see README › Deploy)
+server/ec2/setup.sh                      one-time box setup: Node 24, Caddy, systemd
+scripts/dev-tunnel.mjs                   pnpm dev:tunnel: Cloudflare quick tunnels for phones off-LAN
+docs/plan.md                             the implementation plan; read before larger changes
+public/                                  static assets
 ```
+
+The server is authoritative for the session (stage, mode, players, genomes, effort); the screen owns the simulation. `server/index.ts` runs with Node type stripping, so `lib/` files it imports must stay erasable TypeScript (no enums) and be imported with the `.ts` extension.
 
 ## Always
 

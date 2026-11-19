@@ -11,8 +11,8 @@ const lanHosts = Object.values(networkInterfaces())
 const nextConfig: NextConfig = {
   pageExtensions: ["ts", "tsx", "mdx"],
   devIndicators: false,
-  allowedDevOrigins: [...lanHosts, "*.local", "192.168.*.*", "10.**", "172.*.*.*"],
-  turbopack: { root: __dirname },
+  allowedDevOrigins: [...lanHosts, "*.local", "192.168.*.*", "10.**", "172.*.*.*", "*.trycloudflare.com"],
+  turbopack: { root: import.meta.dirname },
 };
 
 const withMDX = createMDX({

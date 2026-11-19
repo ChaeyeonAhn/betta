@@ -1,0 +1,19 @@
+// A phone keeps the same id across reloads so it gets its own betta back.
+// crypto.randomUUID only exists in secure contexts; plain http on the LAN is not one.
+
+const KEY = "betta-player-id";
+
+export function getPlayerId(): string {
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (saved) return saved;
+  } catch {}
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  try {
+    localStorage.setItem(KEY, id);
+  } catch {}
+  return id;
+}

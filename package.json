@@ -2,16 +2,20 @@
   "name": "betta",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=24"
   },
   "packageManager": "pnpm@12.11.2",
   "scripts": {
-    "dev": "concurrently -n next,socket \"next dev\" \"node socket-server.mjs\"",
-    "dev:mobile": "concurrently -n next,socket \"next dev --experimental-https -H 0.0.0.0\" \"node socket-server.mjs --https\"",
+    "dev": "concurrently -n next,server \"next dev\" \"node --watch server/index.ts\"",
+    "dev:mobile": "concurrently -n next,server \"next dev --experimental-https -H 0.0.0.0\" \"node --watch server/index.ts --https\"",
+    "dev:tunnel": "node scripts/dev-tunnel.mjs",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "deploy:server": "bash scripts/deploy-server.sh",
+    "typecheck": "tsc --noEmit",
+    "server": "node server/index.ts"
   },
   "dependencies": {
     "@mdx-js/loader": "^3.1.1",
