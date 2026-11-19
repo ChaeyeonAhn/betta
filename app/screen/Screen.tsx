@@ -18,7 +18,7 @@ type Props = {
   socketUrl: string | null;
 };
 
-// Admin keys: 1 / 2 = mode A / B, Space or → = next stage, R = reset, H = hide HUD.
+// Admin keys: 1 / 2 = mode A / B, Space or → = next stage, R = reset, P = drop disconnected phones, H = hide HUD.
 export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
   const hello = useMemo<Hello>(() => ({ role: "screen", room, adminKey }), [room, adminKey]);
   const { state, connected, rejected, socket } = useBetta(hello, socketUrl);
@@ -49,6 +49,7 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
       else if (event.key === "2") send({ cmd: "setMode", mode: "B" });
       else if (event.key === " " || event.key === "ArrowRight") send({ cmd: "next" });
       else if (event.key === "r" || event.key === "R") send({ cmd: "reset" });
+      else if (event.key === "p" || event.key === "P") send({ cmd: "prune" });
       else if (event.key === "h" || event.key === "H") setHud((v) => !v);
       else return;
       event.preventDefault();
@@ -78,7 +79,6 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
         {stage === "open" && <Open players={players} socket={socket} />}
         {(stage === "lobby" || stage === "input" || !stage) && (
           <section className={styles.stage}>
-            <p className={styles.stageName}>{stage ?? "…"}</p>
             {stage === "input" && state && (
               <p className={styles.join}>
                 {state.mode === "A" ? "look at your phone" : "answer on your phone"}
@@ -119,7 +119,7 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
               </li>
             ))}
           </ul>
-          <p className={styles.keys}>1/2 mode · space next · R reset · H hide</p>
+          <p className={styles.keys}>1/2 mode · space next · R reset · P drop offline · H hide</p>
         </aside>
       )}
     </main>

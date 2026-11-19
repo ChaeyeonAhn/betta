@@ -72,7 +72,9 @@ export type AdminCommand =
   | { cmd: "setMode"; mode: Mode }
   | { cmd: "next" }
   | { cmd: "goto"; stage: Stage }
-  | { cmd: "reset" };
+  | { cmd: "reset" }
+  /** Drop every player whose phone is disconnected, right now. */
+  | { cmd: "prune" };
 
 export type Steer = { x: number; y: number };
 

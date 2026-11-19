@@ -140,6 +140,10 @@ function runAdmin(command: AdminCommand) {
     case "reset":
       reset();
       break;
+    case "prune":
+      for (const [id, player] of session.players) if (!player.socketId) session.players.delete(id);
+      scheduleBroadcast();
+      break;
   }
 }
 
@@ -296,6 +300,13 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const player = playerOf(socket);
     if (!player || player.socketId !== socket.id) return;
+    // No betta yet: nothing to keep on screen, drop them now (a reload just rejoins).
+    if (!player.genome) {
+      session.players.delete(player.id);
+      console.log(`- phone ${player.id.slice(0, 6)} (dropped)`);
+      scheduleBroadcast();
+      return;
+    }
     player.socketId = null;
     player.lastSeen = Date.now();
     if (session.stage === "open") player.phase = "fading";
