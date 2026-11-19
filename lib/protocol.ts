@@ -50,6 +50,8 @@ export type PlayerView = {
   genome: Genome | null;
   /** Born stage: the visitor pushed their betta from the phone into the tank. */
   released: boolean;
+  /** Grid stage: taps this player put into their own wall. */
+  effort: number;
 };
 
 export type SessionState = {
@@ -94,4 +96,10 @@ export type ServerToClient = {
 
 export const QUESTION_COUNT = 5;
 export const FEED_MS = 30_000;
+
+/** Grid stage: walls break when the room's taps reach players × TAPS_PER_PLAYER, or after GRID_MS. */
+export const GRID_MS = 60_000;
+export const TAPS_PER_PLAYER = 30;
+/** The shared total leaks this many taps per second per player, so everyone has to keep pushing. */
+export const DECAY_PER_PLAYER = 2;
 export const DEFAULT_ROOM = "betta";

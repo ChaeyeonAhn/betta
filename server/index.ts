@@ -11,8 +11,11 @@ import { createServer as createHttpsServer } from "node:https";
 import { Server, type Socket } from "socket.io";
 import { lanAddresses } from "../lib/lan.ts";
 import {
+  DECAY_PER_PLAYER,
   DEFAULT_ROOM,
+  GRID_MS,
   QUESTION_COUNT,
+  TAPS_PER_PLAYER,
   STAGES,
   type AdminCommand,
   type ClientToServer,
@@ -33,6 +36,8 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 /** A disconnected player's betta fades and is removed after this long. */
 const FADE_MS = 3 * 60_000;
 const BROADCAST_MS = 100;
+/** Grid stage auto-break; env override is for tests. */
+const GRID_TIMEOUT_MS = Number(process.env.GRID_MS) || GRID_MS;
 /** Comma-separated page origins allowed to connect, e.g. the Vercel URL. Unset = any. */
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(",").map((o) => o.trim()).filter(Boolean);
 
@@ -56,8 +61,12 @@ const session = {
   mode: "A" as Mode,
   players: new Map<string, Player>(),
   effortTotal: 0,
+  effortThreshold: 0,
   deadline: null as number | null,
 };
+
+/** Players who have a betta: the ones who can push walls and swim. */
+const withGenome = () => [...session.players.values()].filter((p) => p.genome);
 
 function newPlayer(id: string): Player {
   return {
@@ -90,7 +99,12 @@ function phaseForStage(stage: Stage): Phase {
 function setStage(stage: Stage) {
   session.stage = stage;
   session.deadline = null;
-  if (stage === "grid") session.effortTotal = 0;
+  if (stage === "grid") {
+    session.effortTotal = 0;
+    session.effortThreshold = Math.max(1, withGenome().length) * TAPS_PER_PLAYER;
+    session.deadline = Date.now() + GRID_TIMEOUT_MS;
+    for (const player of session.players.values()) player.effort = 0;
+  }
   for (const player of session.players.values()) {
     if (player.phase !== "fading") player.phase = phaseForStage(stage);
   }
@@ -141,8 +155,9 @@ function snapshot(): SessionState {
       done: isDone(p),
       genome: p.genome,
       released: p.released,
+      effort: p.effort,
     })),
-    effort: { total: session.effortTotal, threshold: 0 },
+    effort: { total: Math.round(session.effortTotal), threshold: session.effortThreshold },
     deadline: session.deadline,
   };
 }
@@ -254,9 +269,14 @@ io.on("connection", (socket) => {
   socket.on("effort", ({ amount }) => {
     const player = playerOf(socket);
     if (!player) return;
-    // TODO(11/22): decay, threshold, auto-break, deadline.
-    player.effort += amount;
-    session.effortTotal += amount;
+    if (session.stage !== "grid" || !player.genome) return;
+    const taps = Math.min(3, Math.max(0, Math.round(amount)));
+    player.effort += taps;
+    session.effortTotal += taps;
+    if (session.effortTotal >= session.effortThreshold) {
+      console.log("walls down: together");
+      setStage("open");
+    }
     scheduleBroadcast();
   });
 
@@ -283,6 +303,22 @@ io.on("connection", (socket) => {
     scheduleBroadcast();
   });
 });
+
+// Grid stage: the shared push leaks away, and the walls come down on their own at the deadline.
+const TICK_MS = 250;
+setInterval(() => {
+  if (session.stage !== "grid") return;
+  const pushing = withGenome().filter((p) => p.socketId).length;
+  const leak = Math.max(1, pushing) * DECAY_PER_PLAYER * (TICK_MS / 1000);
+  if (session.effortTotal > 0) {
+    session.effortTotal = Math.max(0, session.effortTotal - leak);
+    scheduleBroadcast();
+  }
+  if (session.deadline && Date.now() >= session.deadline) {
+    console.log("walls down: timeout");
+    setStage("open");
+  }
+}, TICK_MS);
 
 // Remove bettas whose phones have been gone for a while.
 setInterval(() => {

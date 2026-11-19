@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import type { AdminCommand, Hello } from "@/lib/protocol";
 import { Born } from "./scenes/Born";
+import { Grid } from "./scenes/Grid";
+import { Open } from "./scenes/Open";
+import { STAGE_H, STAGE_W } from "./scenes/useFit";
 import styles from "./screen.module.css";
 
 type Props = {
@@ -54,31 +57,45 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [socket]);
 
+  // The projection is authored at 1920 × 602 and scaled to fit the window (letterboxed).
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const update = () => setScale(Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
   const players = state?.players ?? [];
   const online = players.filter((p) => p.connected).length;
+  const stage = state?.stage;
 
   return (
     <main className={styles.root}>
-      {state?.stage === "born" && <Born players={players} />}
-      {state?.stage !== "born" && (
-        <section className={styles.stage}>
-          <p className={styles.stageName}>{state?.stage ?? "…"}</p>
-          {state?.stage === "input" && (
-            <p className={styles.join}>
-              {state.mode === "A" ? "look at your phone" : "answer on your phone"}
-              <br />
-              <span className={styles.count}>{players.filter((p) => p.done).length}</span> / {players.length} done
-            </p>
-          )}
-          {state?.stage === "lobby" && (
-            <p className={styles.join}>
-              {joinUrl}
-              <br />
-              <span className={styles.count}>{online}</span> in the water
-            </p>
-          )}
-        </section>
-      )}
+      <div className={styles.frame} style={{ width: STAGE_W, height: STAGE_H, transform: `translate(-50%, -50%) scale(${scale})` }}>
+        {stage === "born" && <Born players={players} />}
+        {stage === "grid" && state && <Grid state={state} />}
+        {stage === "open" && <Open players={players} socket={socket} />}
+        {(stage === "lobby" || stage === "input" || !stage) && (
+          <section className={styles.stage}>
+            <p className={styles.stageName}>{stage ?? "…"}</p>
+            {stage === "input" && state && (
+              <p className={styles.join}>
+                {state.mode === "A" ? "look at your phone" : "answer on your phone"}
+                <br />
+                <span className={styles.count}>{players.filter((p) => p.done).length}</span> / {players.length} done
+              </p>
+            )}
+            {stage === "lobby" && (
+              <p className={styles.join}>
+                {joinUrl}
+                <br />
+                <span className={styles.count}>{online}</span> in the water
+              </p>
+            )}
+          </section>
+        )}
+      </div>
 
       {hud && (
         <aside className={styles.hud}>

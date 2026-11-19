@@ -6,6 +6,17 @@
   overflow: hidden;
 }
 
+/* Fixed 1920 × 602 stage, centred and scaled by Screen.tsx. Everything inside is stage px. */
+.frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform-origin: center;
+  overflow: hidden;
+  background: #000;
+  outline: 1px solid #151515;
+}
+
 .stage {
   position: absolute;
   inset: 0;
@@ -16,7 +27,7 @@
 
 .stageName {
   margin: 0;
-  font-size: clamp(2rem, 6vw, 5rem);
+  font-size: 72px;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
@@ -25,12 +36,12 @@
   margin: 1.5rem 0 0;
   color: #9a9a9a;
   font-family: var(--font-mono);
-  font-size: 1rem;
+  font-size: 20px;
 }
 
 .count {
   color: #2ec4b6;
-  font-size: 1.5rem;
+  font-size: 28px;
 }
 
 .hud {

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import { getPlayerId, shortTag } from "@/lib/playerId";
 import type { FeedEvent, Hello } from "@/lib/protocol";
+import { Joystick } from "./controls/Joystick";
+import { TapPad } from "./controls/TapPad";
 import { FakeFeed } from "./modes/FakeFeed";
 import { Release } from "./Release";
 import styles from "./phone.module.css";
@@ -38,6 +40,14 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
         onRelease={() => socket.current?.emit("release")}
       />
     );
+  }
+
+  if (state.stage === "grid" && me.genome) {
+    return <TapPad state={state} mine={me.effort} onTap={() => socket.current?.emit("effort", { amount: 1 })} />;
+  }
+
+  if (state.stage === "open" && me.genome) {
+    return <Joystick genome={me.genome} tag={shortTag(me.id)} onSteer={(s) => socket.current?.emit("steer", s)} />;
   }
 
   return (
