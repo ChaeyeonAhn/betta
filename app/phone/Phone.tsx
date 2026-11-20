@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import { getPlayerId, shortTag } from "@/lib/playerId";
-import type { FeedEvent, Hello } from "@/lib/protocol";
+import type { FeedEvent, Hello, Steer } from "@/lib/protocol";
 import { Joystick } from "./controls/Joystick";
 import { TapPad } from "./controls/TapPad";
 import { FakeFeed } from "./modes/FakeFeed";
@@ -22,6 +22,7 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
     (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => socket.current?.emit("feed", batch),
     [socket],
   );
+  const sendSteer = useCallback((steer: Steer) => socket.current?.emit("steer", steer), [socket]);
 
   if (rejected) return <Centered>{rejected}</Centered>;
   if (!connected || !me || !state) return <Centered dim>connecting…</Centered>;
@@ -35,6 +36,7 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
     return (
       <Release
         genome={me.genome}
+        playerId={me.id}
         tag={shortTag(me.id)}
         released={me.released}
         onRelease={() => socket.current?.emit("release")}
@@ -47,7 +49,7 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   }
 
   if (state.stage === "open" && me.genome) {
-    return <Joystick genome={me.genome} tag={shortTag(me.id)} onSteer={(s) => socket.current?.emit("steer", s)} />;
+    return <Joystick genome={me.genome} playerId={me.id} tag={shortTag(me.id)} onSteer={sendSteer} />;
   }
 
   return (

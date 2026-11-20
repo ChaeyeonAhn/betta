@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { type Group, MeshStandardMaterial, SRGBColorSpace, TextureLoader } from "three";
 import type { Genome } from "@/lib/protocol";
 import { createBettaMaterial } from "./bettaMaterial";
-import { body, eyeball, fins, pairedFins } from "./bettaMesh";
+import { BODY_REST_PITCH, body, eyeball, fins, pairedFins } from "./bettaMesh";
 
 const ATLAS = "/betta-uv.webp";
 const eye = new MeshStandardMaterial({ color: "#151619", roughness: 0.22 });
@@ -26,7 +26,12 @@ export function useBettaAtlas() {
   return atlas;
 }
 
-export function BettaModel({ genome, seed, size }: { genome: Genome; seed: string; size: number }) {
+export function BettaModel({ genome, seed, size, followHeading = false }: {
+  genome: Genome;
+  seed: string;
+  size: number;
+  followHeading?: boolean;
+}) {
   const fish = useRef<Group>(null);
   const atlas = useBettaAtlas();
   const id = useMemo(() => {
@@ -56,13 +61,20 @@ export function BettaModel({ genome, seed, size }: { genome: Genome; seed: strin
     const room = 1 - boundary * 0.5;
     const thrust = Math.sin(stroke) * 0.045 * swim.pulse;
     membrane.time.value = stroke;
+    const roll = Math.sin(stroke * 0.39) * swim.roll;
+    if (followHeading) {
+      // The parent supplies the heading. Keep the body axis neutral while the fins swim.
+      fish.current.rotation.set(roll, 0, -BODY_REST_PITCH);
+      return;
+    }
+
     fish.current.position.set(
       0.24 + Math.sin(drift) * swim.travel * room + thrust,
       Math.sin(drift * 1.17) * 0.12 * room,
       Math.sin(drift * 0.94) * 0.24,
     );
     fish.current.rotation.set(
-      Math.sin(stroke * 0.39) * swim.roll,
+      roll,
       Math.sin(drift * 1.07) * swim.turn,
       0.23 + Math.sin(drift * 1.11) * 0.10 + thrust,
     );
@@ -70,7 +82,7 @@ export function BettaModel({ genome, seed, size }: { genome: Genome; seed: strin
 
   return (
     <group scale={size}>
-      <group ref={fish}>
+      <group ref={fish} position-x={0.24}>
         <mesh geometry={body} material={skin.material} />
         {fins.map((geometry, i) => <mesh key={geometry.id} geometry={geometry} material={membrane.material} renderOrder={i + 1} />)}
         {[-1, 1].map((side) => (

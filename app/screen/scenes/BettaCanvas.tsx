@@ -14,12 +14,14 @@ export function BettaCanvas({
   children,
   scenery,
   distance = CAMERA_DISTANCE,
+  viewHeight = STAGE_H,
 }: {
   children: ReactNode;
   scenery?: ReactNode;
   distance?: number;
+  viewHeight?: number;
 }) {
-  const fov = 2 * Math.atan(STAGE_H / (2 * distance)) * 180 / Math.PI;
+  const fov = 2 * Math.atan(viewHeight / (2 * distance)) * 180 / Math.PI;
   return (
     <Canvas
       aria-hidden

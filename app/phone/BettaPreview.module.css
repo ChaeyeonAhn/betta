@@ -1,0 +1,21 @@
+.preview {
+  margin: 0;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+}
+
+.viewport {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 10 / 7;
+  overflow: hidden;
+}
+
+.label {
+  margin-top: 2px;
+  color: #8a8a8a;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}

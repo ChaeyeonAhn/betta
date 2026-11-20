@@ -5,19 +5,30 @@
 // The screen adds it as one force among schooling and personal space, so the
 // fish follows, but not perfectly.
 
-import { useRef, useState } from "react";
-import { BettaShape } from "@/app/_components/BettaShape";
+import { useEffect, useRef, useState } from "react";
 import type { Genome, Steer } from "@/lib/protocol";
+import { BettaPreview } from "../BettaPreview";
 import styles from "./controls.module.css";
 
 const RADIUS = 110;
 const SEND_MS = 50;
 
-export function Joystick({ genome, tag, onSteer }: { genome: Genome; tag: string; onSteer: (s: Steer) => void }) {
+export function Joystick({ genome, playerId, tag, onSteer }: {
+  genome: Genome;
+  playerId: string;
+  tag: string;
+  onSteer: (steer: Steer) => void;
+}) {
   const padRef = useRef<HTMLDivElement>(null);
-  const lastSent = useRef(0);
+  const steer = useRef<Steer>({ x: 0, y: 0 });
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    if (!active) return;
+    const timer = setInterval(() => onSteer(steer.current), SEND_MS);
+    return () => clearInterval(timer);
+  }, [active, onSteer]);
 
   const move = (clientX: number, clientY: number, force = false) => {
     const rect = padRef.current!.getBoundingClientRect();
@@ -29,23 +40,21 @@ export function Joystick({ genome, tag, onSteer }: { genome: Genome; tag: string
       y = (y / len) * RADIUS;
     }
     setKnob({ x, y });
-    const now = performance.now();
-    if (force || now - lastSent.current > SEND_MS) {
-      lastSent.current = now;
-      onSteer({ x: x / RADIUS, y: y / RADIUS });
-    }
+    steer.current = { x: x / RADIUS, y: y / RADIUS };
+    if (force) onSteer(steer.current);
   };
 
   const stop = () => {
     setActive(false);
     setKnob({ x: 0, y: 0 });
-    onSteer({ x: 0, y: 0 });
+    steer.current = { x: 0, y: 0 };
+    onSteer(steer.current);
   };
 
   return (
     <main className={styles.root}>
       <div className={styles.me}>
-        <BettaShape genome={genome} size={120} label={tag} />
+        <BettaPreview genome={genome} playerId={playerId} tag={tag} width={120} />
       </div>
       <div
         ref={padRef}

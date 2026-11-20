@@ -9,9 +9,14 @@ import {
 
 type Point = [number, number];
 
+const BODY_START = -0.43;
+const BODY_END = 0.448;
+const NOSE_RISE = 0.06;
+export const BODY_REST_PITCH = Math.atan2(NOSE_RISE, BODY_END - BODY_START);
+
 const bodyProfile: Point[] = [
-  [-0.43, 0.019], [-0.35, 0.028], [-0.26, 0.045], [-0.13, 0.077],
-  [0.03, 0.107], [0.16, 0.111], [0.28, 0.087], [0.36, 0.058], [0.425, 0.032], [0.448, 0],
+  [BODY_START, 0.019], [-0.35, 0.028], [-0.26, 0.045], [-0.13, 0.077],
+  [0.03, 0.107], [0.16, 0.111], [0.28, 0.087], [0.36, 0.058], [0.425, 0.032], [BODY_END, 0],
 ];
 const profile = new SplineCurve(bodyProfile.map(([x, radius]) => new Vector2(radius, x)));
 
@@ -23,8 +28,8 @@ function makeBody(lengthSegments: number, radialSegments: number) {
   const positions = geometry.getAttribute("position");
   const uv = geometry.getAttribute("uv");
   for (let i = 0; i < positions.count; i++) {
-    const progress = (positions.getX(i) + 0.43) / 0.878;
-    positions.setY(i, positions.getY(i) + progress * progress * 0.06);
+    const progress = (positions.getX(i) - BODY_START) / (BODY_END - BODY_START);
+    positions.setY(i, positions.getY(i) + progress * progress * NOSE_RISE);
     uv.setXY(i, progress, uv.getX(i));
   }
   geometry.computeVertexNormals();

@@ -5,13 +5,19 @@
 // swims in from the bottom (app/screen/scenes/Born.tsx).
 
 import { useRef, useState } from "react";
-import { BettaShape } from "@/app/_components/BettaShape";
 import type { Genome } from "@/lib/protocol";
+import { BettaPreview } from "./BettaPreview";
 import styles from "./Release.module.css";
 
 const SWIPE_PX = 70;
 
-export function Release({ genome, tag, released, onRelease }: { genome: Genome; tag: string; released: boolean; onRelease: () => void }) {
+export function Release({ genome, playerId, tag, released, onRelease }: {
+  genome: Genome;
+  playerId: string;
+  tag: string;
+  released: boolean;
+  onRelease: () => void;
+}) {
   const startY = useRef<number | null>(null);
   const [drag, setDrag] = useState(0);
   const [leaving, setLeaving] = useState(false);
@@ -44,7 +50,7 @@ export function Release({ genome, tag, released, onRelease }: { genome: Genome; 
       <p className={styles.top}>{gone ? "look up." : "your betta is born."}</p>
 
       <div className={`${styles.fish} ${gone ? styles.gone : ""}`} style={gone ? undefined : { transform: `translateY(${drag}px)` }}>
-        <BettaShape genome={genome} size={260} label={tag} />
+        <BettaPreview genome={genome} playerId={playerId} tag={tag} width={260} />
       </div>
 
       {!gone && (

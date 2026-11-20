@@ -12,7 +12,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
-import type { Group } from "three";
+import { type Group, MathUtils } from "three";
 import { BettaShape } from "@/app/_components/BettaShape";
 import type { BettaSocket } from "@/hooks/useBetta";
 import { genomeDistance } from "@/lib/genome";
@@ -22,6 +22,7 @@ import { BettaCanvas, BettaVisual, stagePoint } from "./BettaCanvas";
 import { BettaModel } from "./BettaModel";
 import { createGridLayout, projectedFishCenter, STAGE_H, STAGE_W } from "./gridLayout";
 import styles from "./Open.module.css";
+import { swimmingPitch } from "./swimmingPitch";
 
 const FISH = 150; // BettaShape width in the tank
 const FISH_H = FISH * 0.7;
@@ -127,11 +128,10 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
         if (f.vx < -8) f.dir = -1;
         else if (f.vx > 8) f.dir = 1;
 
-        const tilt = Math.max(-0.45, Math.min(0.45, f.vy / (Math.abs(f.vx) + 60))) * f.dir;
         const el = els.current.get(id);
         if (el) el.style.transform = `translate(${f.x - FISH / 2}px, ${f.y - FISH_H / 2}px)`;
         const flip = flips.current.get(id);
-        if (flip) flip.style.transform = `scaleX(${f.dir}) rotate(${tilt}rad)`;
+        if (flip) flip.style.transform = `scaleX(${f.dir}) rotate(${-f.dir * swimmingPitch(f.vx, f.vy)}rad)`;
       }
       raf = requestAnimationFrame(tick);
     };
@@ -196,20 +196,21 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
 
 function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: RefObject<Map<string, Fish>> }) {
   const model = useRef<Group>(null);
+  const initialYaw = useRef(fish.current.get(id)?.dir === -1 ? Math.PI : 0);
   useFrame((_, delta) => {
     const state = fish.current.get(id);
     const group = model.current;
     if (!state || !group) return;
     group.position.set(...stagePoint(state.x, state.y));
     const facing = state.dir === 1 ? 0 : Math.PI;
-    group.rotation.y += (facing - group.rotation.y) * Math.min(1, delta * 8);
-    const pitch = Math.atan2(-state.vy, Math.abs(state.vx) + 110);
-    group.rotation.z = state.dir * (Math.max(-0.48, Math.min(0.48, pitch)) - 0.20);
+    group.rotation.y = MathUtils.damp(group.rotation.y, facing, 8, delta);
+    // In XYZ Euler order, the Y turn does not reverse the pitch's Y component.
+    group.rotation.z = swimmingPitch(state.vx, state.vy);
   });
 
   return (
-    <group ref={model}>
-      <BettaModel genome={genome} seed={id} size={FISH * 0.58} />
+    <group ref={model} rotation-y={initialYaw.current}>
+      <BettaModel genome={genome} seed={id} size={FISH * 0.58} followHeading />
     </group>
   );
 }
