@@ -10,14 +10,18 @@
 // No fighting: relations show only as drifting together or keeping distance.
 // Positions live in refs and are written straight to the DOM each frame.
 
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { useFrame } from "@react-three/fiber";
+import type { Group } from "three";
 import { BettaShape } from "@/app/_components/BettaShape";
 import type { BettaSocket } from "@/hooks/useBetta";
 import { genomeDistance } from "@/lib/genome";
 import { shortTag } from "@/lib/playerId";
 import type { Genome, PlayerView, Steer } from "@/lib/protocol";
+import { BettaCanvas, BettaVisual, stagePoint } from "./BettaCanvas";
+import { BettaModel } from "./BettaModel";
+import { createGridLayout, projectedFishCenter, STAGE_H, STAGE_W } from "./gridLayout";
 import styles from "./Open.module.css";
-import { STAGE_H, STAGE_W, cellCenter, useFit } from "./useFit";
 
 const FISH = 150; // BettaShape width in the tank
 const FISH_H = FISH * 0.7;
@@ -30,7 +34,7 @@ type Fish = { x: number; y: number; vx: number; vy: number; wander: number; dir:
 
 export function Open({ players, socket }: { players: PlayerView[]; socket: RefObject<BettaSocket | null> }) {
   const bettas = players.filter((p) => p.genome);
-  const fit = useFit(bettas.length);
+  const [opening] = useState(() => ({ ...createGridLayout(bettas.length), occupied: bettas.length }));
   const fish = useRef(new Map<string, Fish>());
   const els = useRef(new Map<string, HTMLDivElement>());
   const flips = useRef(new Map<string, HTMLDivElement>());
@@ -41,7 +45,10 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
   const firstFrame = fish.current.size === 0;
   bettas.forEach((p, i) => {
     if (fish.current.has(p.id)) return;
-    const c = firstFrame ? cellCenter(i, fit) : { x: Math.random() < 0.5 ? -FISH : STAGE_W + FISH, y: STAGE_H * (0.2 + Math.random() * 0.6) };
+    const start = opening.slots[i];
+    const c = firstFrame && start
+      ? projectedFishCenter(start, opening.side)
+      : { x: Math.random() < 0.5 ? -FISH : STAGE_W + FISH, y: STAGE_H * (0.2 + Math.random() * 0.6) };
     const away = Math.atan2(c.y - STAGE_H / 2, c.x - STAGE_W / 2) + (Math.random() - 0.5) * 0.8;
     const speed = firstFrame ? 260 + Math.random() * 160 : 160;
     const vx = firstFrame ? Math.cos(away) * speed : (c.x < 0 ? 1 : -1) * speed;
@@ -134,18 +141,27 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
 
   return (
     <section className={styles.root}>
+      {bettas.length > 0 && (
+        <BettaVisual fallback={null}>
+          <BettaCanvas>
+            {bettas.map((p) => <OpenBetta key={p.id} id={p.id} genome={p.genome!} fish={fish} />)}
+          </BettaCanvas>
+        </BettaVisual>
+      )}
       {/* The partitions fly apart once, as the scene opens. */}
-      {bettas.map((p, i) => {
-        const c = cellCenter(i, fit);
-        const w = fit.size + 24;
-        const h = fit.cellH + 8;
+      {opening.slots.map((c, i) => {
+        const { side } = opening;
         const dx = (c.x - STAGE_W / 2) * 0.6;
         const dy = (c.y - STAGE_H / 2) * 0.9 - 40;
         return (
           <div
-            key={`wall-${p.id}`}
+            key={i}
             className={styles.wall}
-            style={{ left: c.x - w / 2, top: c.y - h / 2, width: w, height: h, "--dx": `${dx}px`, "--dy": `${dy}px` } as React.CSSProperties}
+            style={{
+              left: c.x - side / 2, top: c.y - side / 2, width: side, height: side,
+              borderColor: i < opening.occupied ? "#f5f5f3" : "#626262",
+              "--dx": `${dx}px`, "--dy": `${dy}px`,
+            } as React.CSSProperties}
           />
         );
       })}
@@ -175,5 +191,25 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
 
       <p className={styles.caption}>steer your betta from your phone</p>
     </section>
+  );
+}
+
+function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: RefObject<Map<string, Fish>> }) {
+  const model = useRef<Group>(null);
+  useFrame((_, delta) => {
+    const state = fish.current.get(id);
+    const group = model.current;
+    if (!state || !group) return;
+    group.position.set(...stagePoint(state.x, state.y));
+    const facing = state.dir === 1 ? 0 : Math.PI;
+    group.rotation.y += (facing - group.rotation.y) * Math.min(1, delta * 8);
+    const pitch = Math.atan2(-state.vy, Math.abs(state.vx) + 110);
+    group.rotation.z = state.dir * (Math.max(-0.48, Math.min(0.48, pitch)) - 0.20);
+  });
+
+  return (
+    <group ref={model}>
+      <BettaModel genome={genome} seed={id} size={FISH * 0.58} />
+    </group>
   );
 }

@@ -1,0 +1,73 @@
+"use client";
+
+import { useFrame } from "@react-three/fiber";
+import { useEffect, useMemo, useRef } from "react";
+import { DynamicDrawUsage, type InstancedMesh, Object3D } from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { useBettaAtlas } from "./BettaModel";
+import { createBettaMaterial } from "./bettaMaterial";
+import { distantBody, distantFins } from "./bettaMesh";
+
+const silhouette = mergeGeometries(distantFins);
+const GRAY = { hue: 0, saturation: 0, finLength: 0.65, pattern: 0, seed: 0, filler: true };
+
+export function GridFillerFish({ centers, size }: { centers: [number, number, number][]; size: number }) {
+  const bodies = useRef<InstancedMesh>(null);
+  const fins = useRef<InstancedMesh>(null);
+  const transform = useMemo(() => new Object3D(), []);
+  const atlas = useBettaAtlas();
+  const [skin, membrane] = useMemo(() => [
+    createBettaMaterial(atlas, GRAY, false),
+    createBettaMaterial(atlas, GRAY, true),
+  ], [atlas]);
+
+  useEffect(() => () => {
+    skin.material.dispose();
+    membrane.material.dispose();
+  }, [skin, membrane]);
+
+  useFrame(({ clock }) => {
+    const bodyMesh = bodies.current;
+    const finMesh = fins.current;
+    if (!bodyMesh || !finMesh) return;
+    const time = clock.elapsedTime;
+    membrane.time.value = time * 4.1;
+    centers.forEach(([x, y, z], i) => {
+      const phase = i * 2.39996 + time * (0.45 + (i % 5) * 0.08);
+      const facing = i % 2 === 0 ? 1 : -1;
+      transform.position.set(
+        x + facing * (0.24 + Math.sin(phase) * 0.14) * size,
+        y + Math.sin(phase * 1.17) * size * 0.12,
+        z + Math.cos(phase * 1.08) * size * 0.18,
+      );
+      transform.rotation.set(
+        Math.sin(phase * 1.4) * 0.09,
+        (facing === 1 ? 0 : Math.PI) + Math.cos(phase) * 0.34,
+        facing * (0.18 + Math.sin(phase * 1.3) * 0.12),
+      );
+      transform.scale.setScalar(size);
+      transform.updateMatrix();
+      bodyMesh.setMatrixAt(i, transform.matrix);
+      finMesh.setMatrixAt(i, transform.matrix);
+    });
+    bodyMesh.instanceMatrix.needsUpdate = true;
+    finMesh.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <>
+      <instancedMesh
+        ref={bodies}
+        args={[distantBody, skin.material, centers.length]}
+        frustumCulled={false}
+        instanceMatrix-usage={DynamicDrawUsage}
+      />
+      <instancedMesh
+        ref={fins}
+        args={[silhouette, membrane.material, centers.length]}
+        frustumCulled={false}
+        instanceMatrix-usage={DynamicDrawUsage}
+      />
+    </>
+  );
+}

@@ -6,7 +6,7 @@ import type { AdminCommand, Hello } from "@/lib/protocol";
 import { Born } from "./scenes/Born";
 import { Grid } from "./scenes/Grid";
 import { Open } from "./scenes/Open";
-import { STAGE_H, STAGE_W } from "./scenes/useFit";
+import { STAGE_H, STAGE_W } from "./scenes/gridLayout";
 import styles from "./screen.module.css";
 
 type Props = {

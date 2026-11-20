@@ -18,6 +18,10 @@
   will-change: transform;
 }
 
+.root:has(canvas) .flip {
+  visibility: hidden;
+}
+
 .tag {
   margin-top: -4px;
   color: #6a6a6a;
