@@ -2,7 +2,7 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, type RefObject } from "react";
-import { Vector2 } from "three";
+import { Vector2, type ShaderMaterial } from "three";
 import { BettaVisual } from "@/app/screen/scenes/BettaCanvas";
 import type { WaterCurrent } from "@/app/screen/scenes/waterCurrent";
 import { waterSurfaces } from "./waterSurfaces";
@@ -45,6 +45,7 @@ export function PaintedWater({ current, brightness = 1 }: {
     waterTime: { value: 0 }, horizontalView: { value: 1 }, brightness: { value: brightness },
     waterFlow: { value: new Vector2() }, waterTravel: { value: new Vector2() },
   }), [brightness]);
+  const material = useRef<ShaderMaterial>(null);
   const animate = useRef(true);
   useEffect(() => {
     const preference = matchMedia("(prefers-reduced-motion: reduce)");
@@ -59,20 +60,24 @@ export function PaintedWater({ current, brightness = 1 }: {
   }, []);
 
   useFrame(({ size }, delta) => {
-    uniforms.horizontalView.value = Math.min(1, size.width / size.height / (2.7 / 1.24));
+    // R3F copies uniform descriptors on assignment. Update the live material's
+    // values, including scalar time and view width, rather than the input props.
+    const live = material.current?.uniforms;
+    if (!live) return;
+    live.horizontalView.value = Math.min(1, size.width / size.height / (2.7 / 1.24));
     if (!animate.current) return;
-    uniforms.waterTime.value += Math.min(delta, .08);
+    live.waterTime.value += Math.min(delta, .08);
     const water = current?.current;
     if (water) {
-      uniforms.waterFlow.value.set(water.x / 78, -water.y / 78);
-      uniforms.waterTravel.value.set(water.offsetX * .006, -water.offsetY * .006);
+      live.waterFlow.value.set(water.x / 78, -water.y / 78);
+      live.waterTravel.value.set(water.offsetX * .006, -water.offsetY * .006);
     }
   });
 
   return (
     <mesh renderOrder={-1000} frustumCulled={false}>
       <planeGeometry args={[2, 2]} />
-      <shaderMaterial vertexShader={vertex} fragmentShader={fragment} uniforms={uniforms}
+      <shaderMaterial ref={material} vertexShader={vertex} fragmentShader={fragment} uniforms={uniforms}
         depthTest={false} depthWrite={false} toneMapped={false} />
     </mesh>
   );
