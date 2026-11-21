@@ -46,10 +46,17 @@
 }
 .routes a:first-child { color: var(--shell); border-color: var(--shell); }
 .routes a:hover { text-decoration: none; border-color: currentColor; }
+@media (min-width: 761px) and (max-width: 1050px) {
+  .specimen { left: 25%; right: 9%; }
+}
+@media (min-width: 761px) and (max-height: 650px) {
+  .specimen { transform: translateY(-48px) rotate(-9deg); }
+  .specimen figure { max-width: min(calc(100vw - 32px), calc(100svh + 80px)); }
+}
 @media (max-width: 760px) {
   .cover { align-content: space-between; min-height: calc(100svh - 32px); padding: 44px 22px 32px; }
   .intro h1 { font-size: clamp(92px, 23vw, 152px); }
-  .specimen { inset: 29% 0 17%; }
+  .specimen { inset: 29% 0 17%; transform: translateX(10%) rotate(-9deg); }
   .specimen figure { max-width: 88vw; }
   .routes { margin: 0; gap: 8px 18px; }
 }

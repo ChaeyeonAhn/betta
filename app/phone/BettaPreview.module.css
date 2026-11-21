@@ -12,6 +12,16 @@
   overflow: hidden;
 }
 
+.roomy {
+  overflow: visible;
+}
+
+.render {
+  position: absolute;
+  display: grid;
+  place-items: center;
+}
+
 .label {
   margin-top: 2px;
   color: var(--silver);
