@@ -106,7 +106,7 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
               </p>
             )}
             {stage === "lobby" && (
-              <p className={styles.lobby}>{joinUrl}</p>
+              <img className={styles.lobby} src="/qr-code.svg" alt={`Scan to join · ${joinUrl}`} />
             )}
           </section>
         )}
