@@ -147,13 +147,18 @@ export const waterSurfaces = /* glsl */ `
     return ink;
   }
 
-  vec3 waterInk(vec3 ray, float t, vec2 flow, vec2 travel) {
+  vec3 waterInk(vec3 ray, float t, vec2 flow, vec2 travel, bool deepWater) {
     ray = normalize(ray);
     vec3 deep = vec3(0.018, 0.033, 0.080);
     float lightOffset = (ray.x - 0.40) / 0.35;
     float scatter = exp(-lightOffset * lightOffset) * smoothstep(-0.10, 0.55, ray.y);
     vec3 water = deep + vec3(0.009, 0.022, 0.040) * scatter;
-    if (ray.y < -0.035) {
+    if (deepWater) {
+      float remainingLight = smoothstep(-0.55, 0.20, ray.y);
+      water = mix(vec3(0.003, 0.008, 0.019), deep, remainingLight);
+      water += vec3(0.009, 0.022, 0.040) * scatter;
+    }
+    if (!deepWater && ray.y < -0.035) {
       float distance = -1.15 / ray.y;
       for (int i = 0; i < 4; i++) {
         vec3 hit = ray * distance;

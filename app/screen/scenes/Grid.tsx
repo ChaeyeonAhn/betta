@@ -43,7 +43,6 @@ export function Grid({ state }: { state: SessionState }) {
       })}>
         <GridTank players={bettas} layout={layout} />
       </BettaVisual>
-      <div className={styles.vignette} aria-hidden />
       {bettas.map((player, i) => {
         const { x, y } = slots[i];
         return (

@@ -31,13 +31,13 @@ export const waterLight = /* glsl */ `
     return profile * visible * extinction;
   }
 
-  vec3 waterScattering(vec3 ray, float t, vec2 flow, vec2 travel) {
+  vec3 waterScattering(vec3 ray, float t, vec2 flow, vec2 travel, bool deepWater) {
     ray = normalize(ray);
     vec3 source = vec3(1.95, 1.05, -2.24);
     source.xz += flow * vec2(.026, .012);
     float end = 10.;
     if (ray.y > .0001) end = min(end, 1.05 / ray.y);
-    if (ray.y < -.0001) end = min(end, -1.15 / ray.y);
+    if (!deepWater && ray.y < -.0001) end = min(end, -1.15 / ray.y);
 
     vec3 center = normalize(vec3(-.43 + flow.x * .018, -.86, -.24));
     float broad = wlStrand(ray, source, center, .42, end);
@@ -66,6 +66,6 @@ export const waterLight = /* glsl */ `
     vec3 grainPoint = ray * 4.1 + vec3(.021 * t, .009 * t, 0.);
     float ink = wlNoise(grainPoint.xy * 174. + grainPoint.z * 13.);
     radiance *= .82 + .32 * ink;
-    return radiance;
+    return radiance * (deepWater ? smoothstep(-.50, .18, ray.y) : 1.);
   }
 `;

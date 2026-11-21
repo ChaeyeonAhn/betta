@@ -2,18 +2,13 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useMemo, type RefObject } from "react";
-import { AdditiveBlending, BoxGeometry, BufferAttribute, DynamicDrawUsage, EdgesGeometry } from "three";
+import { AdditiveBlending, BufferAttribute, DynamicDrawUsage } from "three";
 import { PaintedWater } from "@/app/_components/PaintedWater";
 import { STAGE_H, STAGE_W } from "./gridLayout";
 import { TANK_CAMERA_DISTANCE, TANK_DEPTH, waterAt, type WaterCurrent } from "./waterCurrent";
 
 const HALF_W = STAGE_W / 2;
 const HALF_H = STAGE_H / 2;
-const HALF_D = TANK_DEPTH / 2;
-const box = new BoxGeometry(STAGE_W, STAGE_H, TANK_DEPTH);
-const edges = new EdgesGeometry(box).translate(0, 0, -HALF_D);
-box.dispose();
-
 const particlesVertex = /* glsl */ `
   attribute float glint;
   varying float strength;
@@ -53,11 +48,8 @@ export function WaterTank({ current }: { current: RefObject<WaterCurrent> }) {
 
   return (
     <>
-      <PaintedWater current={current} />
+      <PaintedWater current={current} variant="deep" />
       <fog attach="fog" args={["#071327", TANK_CAMERA_DISTANCE + 140, TANK_CAMERA_DISTANCE + TANK_DEPTH * 1.12]} />
-      <lineSegments geometry={edges}>
-        <lineBasicMaterial color="#91aac4" transparent opacity={0.13} depthWrite={false} />
-      </lineSegments>
       <SuspendedMatter current={current} particles={particles} />
     </>
   );

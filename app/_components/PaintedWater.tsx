@@ -19,7 +19,7 @@ const vertex = /* glsl */ `
 const fragment = /* glsl */ `
   uniform float waterTime;
   uniform float horizontalView;
-  uniform float brightness;
+  uniform bool deepWater;
   uniform vec2 waterFlow;
   uniform vec2 waterTravel;
   varying vec2 waterUv;
@@ -31,20 +31,21 @@ const fragment = /* glsl */ `
     // Portrait phones see the lit right-hand section of the same environment.
     vec2 viewUv = vec2(.84, .5) + (waterUv - vec2(.84, .5)) * vec2(horizontalView, 1.);
     vec3 ray = normalize(vec3((viewUv - .5) * vec2(2.7, 1.24), -1.));
-    vec3 water = waterInk(ray, waterTime, waterFlow, waterTravel);
-    water += waterScattering(ray, waterTime, waterFlow, waterTravel);
-    gl_FragColor = vec4(water * brightness, 1.);
+    vec3 water = waterInk(ray, waterTime, waterFlow, waterTravel, deepWater);
+    water += waterScattering(ray, waterTime, waterFlow, waterTravel, deepWater);
+    gl_FragColor = vec4(water, 1.);
   }
 `;
 
-export function PaintedWater({ current, brightness = 1 }: {
+export function PaintedWater({ current, variant = "seabed" }: {
   current?: RefObject<WaterCurrent>;
-  brightness?: number;
+  variant?: "seabed" | "deep";
 }) {
   const uniforms = useMemo(() => ({
-    waterTime: { value: 0 }, horizontalView: { value: 1 }, brightness: { value: brightness },
+    deepWater: { value: variant === "deep" },
+    waterTime: { value: variant === "deep" ? performance.now() / 1000 : 0 }, horizontalView: { value: 1 },
     waterFlow: { value: new Vector2() }, waterTravel: { value: new Vector2() },
-  }), [brightness]);
+  }), [variant]);
   const material = useRef<ShaderMaterial>(null);
   const animate = useRef(true);
   useEffect(() => {
@@ -66,7 +67,11 @@ export function PaintedWater({ current, brightness = 1 }: {
     if (!live) return;
     live.horizontalView.value = Math.min(1, size.width / size.height / (2.7 / 1.24));
     if (!animate.current) return;
-    live.waterTime.value += Math.min(delta, .08);
+    // The two deep scenes share a phase as well as a shader, so opening the
+    // cages continues the same surface and light instead of restarting them.
+    live.waterTime.value = variant === "deep"
+      ? performance.now() / 1000
+      : live.waterTime.value + Math.min(delta, .08);
     const water = current?.current;
     if (water) {
       live.waterFlow.value.set(water.x / 78, -water.y / 78);
