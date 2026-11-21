@@ -8,7 +8,6 @@ import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import { BettaCard } from "./card/BettaCard";
 import { Joystick } from "./controls/Joystick";
 import { FakeFeed } from "./modes/FakeFeed";
-import { QuestionDial } from "./modes/QuestionDial";
 import { Release } from "./Release";
 import { LookAround } from "./LookAround";
 import { Cell } from "./Cell";
@@ -34,19 +33,11 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   if (rejected) return <Centered>{rejected}</Centered>;
   if (!connected || !me || !state) return <Centered dim>Connecting to the tank…</Centered>;
 
-  if (me.phase === "input" && !me.done) {
-    if (state.mode === "A") return <FakeFeed send={sendFeed} playerId={me.id} />;
-    if (!me.question) return <Centered dim>Waiting for the question…</Centered>;
-    return <QuestionDial
-      playerId={me.id}
-      question={me.question}
-      onAnswer={(q, value) => socket.current?.emit("answer", { q, value })}
-    />;
-  }
+  if (me.phase === "input" && !me.done) return <FakeFeed send={sendFeed} playerId={me.id} />;
 
-  // Born (or Mode A once this betta has grown) until the walls break: release
-  // it, then be it, inside its cell. Late arrivals without a cell just look around.
-  const caged = state.stage === "born" || state.stage === "grid" || (state.stage === "input" && state.mode === "A");
+  // Once the betta has grown, until the walls break: release it, then be it,
+  // inside its cell. Late arrivals without a cell just look around.
+  const caged = state.stage === "born" || state.stage === "grid" || state.stage === "input";
   if (caged && me.genome) {
     if (me.released && me.slot !== null && flight !== "flying") {
       return <Cell state={state} me={me} slot={me.slot} onPush={() => socket.current?.emit("effort", { amount: 1 })} />;
@@ -76,14 +67,8 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
     return <Joystick onSteer={sendSteer} />;
   }
 
-  if (me.phase === "waiting") return <LookAround />;
-
-  return (
-    <Centered>
-      <p className={styles.title}>{me.done ? "Look at the big screen" : me.phase}</p>
-      <p className={styles.dim}>All your answers are in.</p>
-    </Centered>
-  );
+  // The lobby, and any moment in between: just the water to look around in.
+  return <LookAround />;
 }
 
 function Centered({ children, dim }: { children: React.ReactNode; dim?: boolean }) {

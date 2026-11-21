@@ -34,122 +34,60 @@
   text-align: center;
 }
 
-.join {
-  margin: 0;
-  color: #9a9a9a;
-  font-family: var(--font-mono);
-  font-size: 20px;
+/* Under the display's bottom edge, outside it. Kept on screen when the display fills the window. */
+.dock {
+  position: absolute;
+  z-index: 2;
+  top: min(calc(50% + var(--display-h) / 2 + 10px), calc(100% - 42px));
+  left: max(calc(50% - var(--display-w) / 2), 10px);
+  width: min(var(--display-w), calc(100% - 20px));
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+}
+
+/* The work's own controls: white line on solid black, monospace, square. */
+.count,
+.calibration {
+  pointer-events: auto;
+  border: 1px solid #fff;
+  border-radius: 0;
+  background: #000;
+  color: #fff;
+  font: 12px / 1.4 var(--font-mono);
 }
 
 .count {
-  color: #2ec4b6;
-  font-size: 28px;
-}
-
-.question {
-  width: 1420px;
-  color: var(--pearl);
-}
-
-.questionNumber,
-.responses {
   margin: 0;
-  color: var(--shell);
-  font: 19px var(--font-mono);
-}
-
-.question h1 {
-  max-width: 1260px;
-  margin: 24px auto 34px;
-  padding: 0;
-  border: 0;
-  font-family: var(--display-serif);
-  font-weight: 500;
-  font-size: 60px;
-  line-height: 1.22;
-  word-break: keep-all;
-}
-
-.questionScale {
-  display: flex;
-  justify-content: center;
-  gap: 100px;
-  color: var(--silver);
-  font-size: 24px;
-}
-
-.questionScale b {
-  margin-right: 8px;
-  color: var(--shell);
-  font-family: var(--font-mono);
-}
-
-.responses {
-  margin-top: 34px;
-  color: var(--silver);
-  font-size: 16px;
-}
-
-.hud {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
-  max-height: calc(100vh - 2rem);
-  overflow: auto;
-  padding: 0.75rem 1rem;
-  background: rgba(20, 20, 20, 0.8);
-  border: 1px solid #2a2a2a;
-  border-radius: 6px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.hud p,
-.hud ul {
-  margin: 0 0 0.25rem;
-}
-
-.hud ul {
-  padding-left: 0;
-  list-style: none;
-}
-
-.hud li + li {
-  margin-top: 0;
-}
-
-.keys {
-  color: #777;
-}
-
-.error {
-  color: #ff6b6b;
+  padding: 6px 10px;
 }
 
 .calibration {
-  position: absolute;
-  z-index: 2;
-  right: 16px;
-  bottom: 16px;
-  min-width: 112px;
-  border: 1px solid #3b5758;
-  border-radius: 6px;
-  background: rgb(5 13 16 / 90%);
-  color: #d7e8e5;
-  font: 12px / 1.4 var(--font-sans);
+  position: relative;
 }
 
 .calibration summary {
-  padding: 8px 10px;
+  padding: 6px 10px;
   cursor: pointer;
+  list-style: none;
 }
 
+.calibration summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Opens upward, over the display, so it never runs off the bottom of the window. */
 .calibrationBody {
+  position: absolute;
+  right: -1px;
+  bottom: calc(100% + 6px);
   display: grid;
-  width: 214px;
-  gap: 7px;
-  padding: 0 10px 10px;
+  width: 260px;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #fff;
+  background: #000;
 }
 
 .calibrationBody label {
@@ -160,7 +98,7 @@
 .calibrationBody input {
   grid-column: 1 / -1;
   width: 100%;
-  accent-color: #91d7c8;
+  accent-color: #fff;
 }
 
 .calibrationActions {
@@ -169,12 +107,14 @@
 }
 
 .calibrationActions button {
-  border: 1px solid #4b5d5d;
-  border-radius: 3px;
-  padding: 3px 7px;
-  background: #142322;
-  color: inherit;
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #fff;
+  border-radius: 0;
+  background: #000;
+  color: #fff;
   font: inherit;
+  white-space: nowrap;
 }
 
 .lobby {

@@ -1,4 +1,4 @@
-// Betta session server. Owns the session: stage, mode, players, their inputs
+// Betta session server. Owns the session: stage, players, their inputs
 // and genomes, the shared wall-breaking effort, and timers. The screen owns
 // the simulation; steering input is only relayed to it.
 //
@@ -17,7 +17,6 @@ import {
   FILL_MS,
   GRID_MS,
   OPEN_MS,
-  QUESTION_COUNT,
   RELEASE_TIMEOUT_MS,
   TAPS_PER_PLAYER,
   STAGES,
@@ -25,15 +24,12 @@ import {
   type ClientToServer,
   type FeedEvent,
   type Genome,
-  type Mode,
   type Phase,
-  type PlayerQuestion,
   type ServerToClient,
   type SessionState,
-  type SharedQuestion,
   type Stage,
 } from "../lib/protocol.ts";
-import { genomeFromAnswers, genomeFromFeed } from "../lib/genome.ts";
+import { genomeFromFeed } from "../lib/genome.ts";
 import { createGridLayout } from "../lib/gridLayout.ts";
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -43,7 +39,6 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 /** A disconnected player's betta fades and is removed after this long. */
 const FADE_MS = 3 * 60_000;
 const BROADCAST_MS = 100;
-const ANSWER_REVEAL_MS = 950;
 /** Grid stage auto-break; env override is for tests. */
 const GRID_TIMEOUT_MS = Number(process.env.GRID_MS) || GRID_MS;
 /** Comma-separated page origins allowed to connect, e.g. the Vercel URL. Unset = any. */
@@ -56,8 +51,6 @@ type Player = {
   socketId: string | null;
   lastSeen: number;
   phase: Phase;
-  answers: (number | null)[];
-  sharedInput: boolean;
   feed: FeedEvent[];
   feedDone: boolean;
   genome: Genome | null;
@@ -71,13 +64,10 @@ type Player = {
 
 const session = {
   stage: "lobby" as Stage,
-  mode: "B" as Mode,
   players: new Map<string, Player>(),
   effortTotal: 0,
   effortThreshold: 0,
   deadline: null as number | null,
-  questionIndex: null as number | null,
-  questionAdvanceAt: null as number | null,
   /** Player count the grid layout is built for; only grows during a round so cells keep their place. */
   gridSize: 0,
   fillAt: null as number | null,
@@ -92,8 +82,6 @@ function newPlayer(id: string): Player {
     socketId: null,
     lastSeen: Date.now(),
     phase: "waiting",
-    answers: Array(QUESTION_COUNT).fill(null),
-    sharedInput: false,
     feed: [],
     feedDone: false,
     genome: null,
@@ -114,7 +102,7 @@ function setGenome(player: Player, genome: Genome) {
 
 /** Whether a released betta still gets a cell: before the placeholders start filling the grid. */
 function seating() {
-  return session.fillAt === null && (session.stage === "born" || (session.stage === "input" && session.mode === "A"));
+  return session.fillAt === null && (session.stage === "born" || session.stage === "input");
 }
 
 /** Players in the current round: the ones the grid waits for. */
@@ -147,32 +135,7 @@ function startFill() {
 }
 
 function isDone(player: Player) {
-  return session.mode === "A" ? player.feedDone : player.genome !== null;
-}
-
-function sharedQuestion(): SharedQuestion | null {
-  const index = session.questionIndex;
-  if (index === null) return null;
-  const group = [...session.players.values()].filter((player) => player.sharedInput && player.socketId);
-  return { index, participants: group.length, answered: group.filter((player) => player.answers[index] !== null).length };
-}
-
-function currentQuestion(player: Player): PlayerQuestion | null {
-  if (session.mode !== "B" || player.phase !== "input" || player.genome) return null;
-  const index = player.sharedInput ? session.questionIndex : player.answers.indexOf(null);
-  if (index === null || index < 0) return null;
-  return { index, answered: player.answers[index] !== null, preview: genomeFromAnswers(player.answers) };
-}
-
-function nextQuestion() {
-  const index = session.questionIndex;
-  if (index === null) return;
-  session.questionAdvanceAt = null;
-  if (index + 1 >= QUESTION_COUNT) setStage("born");
-  else {
-    session.questionIndex = index + 1;
-    scheduleBroadcast();
-  }
+  return player.feedDone;
 }
 
 /** Phase a player who is with the group should be in for the current stage. */
@@ -184,34 +147,18 @@ function phaseForStage(stage: Stage): Phase {
 }
 
 function setStage(stage: Stage) {
-  const wasQuestionnaire = session.questionIndex !== null;
   session.stage = stage;
   session.deadline = null;
   session.fillAt = null;
-  session.questionAdvanceAt = null;
   if (stage === "input") session.gridSize = [...session.players.values()].filter((p) => p.socketId).length;
-  session.questionIndex = session.mode === "B" && stage === "input" ? 0 : null;
 
   for (const player of session.players.values()) {
     if (stage === "input") {
       player.slot = null;
       player.openUntil = null;
     }
-    if (session.questionIndex !== null && player.socketId) {
-      player.answers.fill(null);
-      player.genome = null;
-      player.genomeAt = null;
-      player.released = false;
-      player.sharedInput = true;
-    } else if (wasQuestionnaire && player.sharedInput) {
-      if (stage !== "lobby" && (player.socketId || player.answers.some((answer) => answer !== null))) {
-        setGenome(player, genomeFromAnswers(player.answers));
-      }
-      player.sharedInput = false;
-    } else if (stage !== "lobby" && player.phase === "input" && !player.genome) {
-      // Late arrivals keep their personal questionnaire as the room advances.
-      continue;
-    }
+    // Late arrivals keep scrolling their own feed as the room advances.
+    if (stage !== "lobby" && player.phase === "input" && !player.genome) continue;
     if (player.phase !== "fading" || stage === "input") player.phase = phaseForStage(stage);
   }
 
@@ -241,18 +188,7 @@ function reset() {
 
 function runAdmin(command: AdminCommand) {
   switch (command.cmd) {
-    case "setMode":
-      if (session.stage !== "lobby" || (command.mode !== "A" && command.mode !== "B")) break;
-      session.mode = command.mode;
-      console.log(`mode → ${command.mode}`);
-      scheduleBroadcast();
-      break;
     case "next": {
-      if (session.questionIndex !== null) {
-        if (command.question === undefined || command.question === session.questionIndex) nextQuestion();
-        break;
-      }
-      if (command.question !== undefined) break;
       // Born: start the placeholders now; during the fill or the hold, go straight to the walls.
       if (session.stage === "born") {
         if (session.fillAt === null) startFill();
@@ -280,7 +216,6 @@ function snapshot(): SessionState {
   return {
     room: ROOM,
     stage: session.stage,
-    mode: session.mode,
     players: [...session.players.values()].map((p) => ({
       id: p.id,
       connected: p.socketId !== null,
@@ -296,16 +231,6 @@ function snapshot(): SessionState {
     deadline: session.deadline,
     fillAt: session.fillAt,
     gridSize: Math.max(1, session.gridSize),
-    question: sharedQuestion(),
-  };
-}
-
-function snapshotForPhone(state: SessionState, player: Player): SessionState {
-  const question = currentQuestion(player);
-  if (!question) return state;
-  return {
-    ...state,
-    players: state.players.map((view) => view.id === player.id ? { ...view, question } : view),
   };
 }
 
@@ -344,11 +269,7 @@ function scheduleBroadcast() {
   if (broadcastTimer) return;
   broadcastTimer = setTimeout(() => {
     broadcastTimer = null;
-    const state = snapshot();
-    for (const connection of io.sockets.sockets.values()) {
-      const player = playerOf(connection);
-      connection.emit("state", player ? snapshotForPhone(state, player) : state);
-    }
+    io.emit("state", snapshot());
   }, BROADCAST_MS);
 }
 
@@ -387,7 +308,7 @@ io.on("connection", (socket) => {
     }
     player.socketId = socket.id;
     player.lastSeen = Date.now();
-    socket.emit("state", snapshotForPhone(snapshot(), player));
+    socket.emit("state", snapshot());
     scheduleBroadcast();
   });
 
@@ -396,22 +317,9 @@ io.on("connection", (socket) => {
     runAdmin(command);
   });
 
-  socket.on("answer", ({ q, value }) => {
-    const player = playerOf(socket);
-    if (!player || player.socketId !== socket.id || !Number.isInteger(value) || value < 0 || value > 10) return;
-    const question = currentQuestion(player);
-    if (!question || q !== question.index || question.answered) return;
-    player.answers[q] = value;
-    if (!player.sharedInput && q === QUESTION_COUNT - 1) {
-      setGenome(player, genomeFromAnswers(player.answers));
-      player.phase = phaseForStage(session.stage);
-    }
-    scheduleBroadcast();
-  });
-
   socket.on("feed", ({ events, start, done }) => {
     const player = playerOf(socket);
-    if (!player || player.feedDone || session.mode !== "A" || player.phase !== "input") return;
+    if (!player || player.feedDone || player.phase !== "input") return;
     if (start) player.feed = [];
     player.feed.push(...events.slice(0, 500));
     if (done) {
@@ -452,9 +360,7 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const player = playerOf(socket);
     if (!player || player.socketId !== socket.id) return;
-    // Keep dial progress across reconnects, even before the betta is complete.
-    const answering = session.mode === "B" && player.phase === "input";
-    if (!player.genome && !answering) {
+    if (!player.genome) {
       session.players.delete(player.id);
       console.log(`- phone ${player.id.slice(0, 6)} (dropped)`);
       scheduleBroadcast();
@@ -471,15 +377,6 @@ io.on("connection", (socket) => {
 // Grid stage: the shared push leaks away, and the walls come down on their own at the deadline.
 const TICK_MS = 250;
 setInterval(() => {
-  const question = sharedQuestion();
-  if (question) {
-    if (question.participants > 0 && question.answered === question.participants) {
-      session.questionAdvanceAt ??= Date.now() + ANSWER_REVEAL_MS;
-      if (Date.now() >= session.questionAdvanceAt) nextQuestion();
-    } else {
-      session.questionAdvanceAt = null;
-    }
-  }
   if (seating()) {
     const now = Date.now();
     for (const player of session.players.values()) {

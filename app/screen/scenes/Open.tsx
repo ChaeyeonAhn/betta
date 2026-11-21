@@ -105,10 +105,9 @@ export function Open({ players, gridSize, socket }: {
           ax += (s.x * MAX_SPEED - f.vx) * 3;
           ay += (s.y * MAX_SPEED - f.vy) * 3;
         } else {
-          f.wander += (Math.random() - 0.5) * dt * (1.8 + (g.reactivity ?? 0.5) * 2.4);
-          const glide = 0.60 + (g.glide ?? 0.5) * 0.8;
-          ax += Math.cos(f.wander) * 40 * glide;
-          ay += Math.sin(f.wander) * 18 * glide;
+          f.wander += (Math.random() - 0.5) * dt * 3.0;
+          ax += Math.cos(f.wander) * 40;
+          ay += Math.sin(f.wander) * 18;
         }
 
         const personal = 70 + g.boundary * 160;

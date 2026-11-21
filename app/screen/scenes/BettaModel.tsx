@@ -49,8 +49,11 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
     for (const char of seed) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
     return hash >>> 0;
   }, [seed]);
-  const { hue, saturation, finLength, boundary, sociability, markings, reactivity = 0.5, glide = 0.5 } = genome;
-  const pattern = markings === undefined ? id % 3 : (id + Math.min(2, Math.floor(markings * 3))) % 3;
+  const { hue, saturation, finLength, boundary, sociability } = genome;
+  // Swimming range and rhythm used to be axes of their own; every betta now sits in the middle.
+  const reactivity = 0.5;
+  const glide = 0.5;
+  const pattern = id % 3;
   const phase = (id % 101) / 16;
   const swim = SWIMS[(id >>> 8) % SWIMS.length];
   // Each fish owns its eye materials, so one fish can fade without the others.
@@ -60,9 +63,9 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
     eyeRimMaterial.dispose();
   }, [eyeMaterial, eyeRimMaterial]);
   const [skin, membrane] = useMemo(() => {
-    const style = { hue, saturation, finLength, pattern, markings, seed: id / 0xffffffff, filler: false };
+    const style = { hue, saturation, finLength, pattern, seed: id / 0xffffffff, filler: false };
     return [createBettaMaterial(atlas, style, false), createBettaMaterial(atlas, style, true)];
-  }, [atlas, hue, saturation, finLength, pattern, markings, id]);
+  }, [atlas, hue, saturation, finLength, pattern, id]);
 
   useEffect(() => () => {
     skin.material.dispose();
@@ -76,7 +79,7 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
       scaled.current.scale.setScalar(size * (0.35 + 0.65 * g));
       for (const { uniforms } of [skin, membrane]) {
         uniforms.bettaFinLength.value = 0.72 + finLength * 0.4 * g;
-        uniforms.bettaStrength.value = (0.44 + saturation * 0.43) * (markings === undefined ? 1 : 0.68 + markings * 0.60) * (0.25 + 0.75 * g);
+        uniforms.bettaStrength.value = (0.44 + saturation * 0.43) * (0.25 + 0.75 * g);
       }
     }
     if (calm) {

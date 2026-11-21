@@ -1,13 +1,8 @@
 // Shared between server/index.ts (Node, type stripping) and the Next.js pages.
 // Only erasable TypeScript here: no enums, no namespaces, no parameter properties.
 
-import { SNS_QUESTIONS } from "./questions.ts";
-
 export const STAGES = ["lobby", "input", "born", "grid", "open"] as const;
 export type Stage = (typeof STAGES)[number];
-
-/** A = 45s SNS feed with the betta growing above it, B = 0–10 dial pad questions. */
-export type Mode = "A" | "B";
 
 /**
  * Where one player is. Late joiners can complete their input independently.
@@ -20,21 +15,6 @@ export type Genome = {
   finLength: number; // 0–1 wanting to be seen
   boundary: number; // 0–1 personal space radius
   sociability: number; // 0–1 schooling tendency
-  markings?: number; // 0–1 selection across the markings
-  reactivity?: number; // 0–1 changes in fin rhythm and turning
-  glide?: number; // 0–1 local swimming range
-};
-
-export type PlayerQuestion = {
-  index: number;
-  answered: boolean;
-  preview: Genome;
-};
-
-export type SharedQuestion = {
-  index: number;
-  answered: number;
-  participants: number;
 };
 
 /** What a post or notification is about. Each tag feeds one or two genome axes (lib/genome.ts). */
@@ -61,7 +41,7 @@ export type PlayerView = {
   id: string;
   connected: boolean;
   phase: Phase;
-  /** Finished the input of the current mode. */
+  /** Finished the 45s feed. */
   done: boolean;
   genome: Genome | null;
   /** Born stage: the visitor pushed their betta from the phone into the tank. */
@@ -72,13 +52,11 @@ export type PlayerView = {
   openUntil: number | null;
   /** Grid stage: taps this player put into their own wall. */
   effort: number;
-  question?: PlayerQuestion | null;
 };
 
 export type SessionState = {
   room: string;
   stage: Stage;
-  mode: Mode;
   players: PlayerView[];
   effort: { total: number; threshold: number };
   /** Epoch ms when the current timed stage auto-advances, or null. */
@@ -87,7 +65,6 @@ export type SessionState = {
   fillAt: number | null;
   /** Player count the grid layout is built for: createGridLayout(gridSize). */
   gridSize: number;
-  question?: SharedQuestion | null;
 };
 
 export type Hello =
@@ -95,8 +72,7 @@ export type Hello =
   | { role: "screen"; room: string; adminKey?: string };
 
 export type AdminCommand =
-  | { cmd: "setMode"; mode: Mode }
-  | { cmd: "next"; question?: number }
+  | { cmd: "next" }
   | { cmd: "goto"; stage: Stage }
   | { cmd: "reset" }
   /** Drop every player whose phone is disconnected, right now. */
@@ -107,7 +83,6 @@ export type Steer = { x: number; y: number };
 export type ClientToServer = {
   hello: (hello: Hello) => void;
   admin: (command: AdminCommand) => void;
-  answer: (answer: { q: number; value: number }) => void;
   /** `start` clears earlier events (feed restarted after a reload); `done` = the 45s are over. */
   feed: (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => void;
   effort: (effort: { amount: number }) => void;
@@ -122,7 +97,6 @@ export type ServerToClient = {
   rejected: (reason: { reason: string }) => void;
 };
 
-export const QUESTION_COUNT = SNS_QUESTIONS.length;
 export const FEED_MS = 45_000;
 
 /** Grid stage: walls break when the room's taps reach players × TAPS_PER_PLAYER, or after GRID_MS. */

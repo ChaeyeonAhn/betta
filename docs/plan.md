@@ -1,6 +1,6 @@
 # Betta Project — Implementation Plan v2
 
-> v0 written 2026-11-18, v1 revised after review the same day. v2 (2026-11-21) is in English and matches the code. v2.1 (same day): Mode A redesigned around the growing betta, born fills the grid, betta card at the end of open.
+> v0 written 2026-11-18, v1 revised after review the same day. v2 (2026-11-21) is in English and matches the code. v2.1 (same day): Mode A redesigned around the growing betta, born fills the grid, betta card at the end of open. v2.2 (11/22): **Mode B removed**; the feed is the only input. The projection shows no text but the player count.
 > Sources: pitch deck (Team3_ChaeyeonAhn_FinalProject.pdf), Notion "Final Project idea / plan" (latest), "Betta project" and "Summary" (latest wins where they overlap).
 > Goal: **a skeleton demo of the full flow by 11/23.** Everything from joining to the shared tank must run end to end over sockets. Visuals can stay rough.
 
@@ -8,40 +8,40 @@
 
 | Topic | Decision |
 | --- | --- |
-| Betta creation input | **Both modes A and B are built**, switched with an admin key in the lobby. A = 45s: the betta grows from a fry at the top of the phone while the visitor uses a fake SNS app below; every action sends a bubble up that shapes it (§2-3). B = 8 questions answered on a 0–10 dial pad, the whole room on the same question. |
+| Betta creation input | **One input: the feed.** 45s: the betta grows from a fry at the top of the phone while the visitor uses a fake SNS app below; every action sends a bubble up that shapes it (§2-3). (The 0–10 question mode B was built, then removed on 11/22.) |
 | Breaking the partitions | **Everyone pushes together.** The room's taps add up; the walls fall when the total crosses a threshold. Falls on its own when the time limit runs out. |
 | Fighting | **No fighting.** Bettas relate only by drifting together or keeping their distance. The genome's `aggression` axis was replaced by **`boundary`**. |
 | Ending | **None for the tank.** `open` is the exhibition loop: late visitors join, and the bettas of visitors who left fade out (§1-1). **Each visitor** steers for 90s, then their phone shows a **betta card** to save or share; their betta stays in the tank. |
 | 11/23 scope | Full flow skeleton. Intro video and sound are left as slots. |
 | Hosting | **Cloud.** Next.js → Vercel (`betta-sigma.vercel.app`), socket server → **EC2 Seoul** (`3-37-110-43.sslip.io`, Caddy HTTPS). Railway was dropped because KAIST DNS can't resolve `*.up.railway.app`. Local dev still works (`pnpm dev`, `dev:mobile`, `dev:tunnel`). Socket and phone URLs come from runtime env (`SOCKET_URL`, `PUBLIC_URL`). |
-| Projection | **Fixed 1920 × 602 stage** (about 3.2 : 1). `Screen.tsx` letterboxes it into the window; a "Projection size" panel adjusts width and height by hand. |
+| Projection | **Fixed 1920 × 602 stage** (about 3.2 : 1). `Screen.tsx` letterboxes it into the window. Just under the display, outside it: the player count (`online/total`) and a "Projection size" panel for width and height, in the work's black-and-white mono style. `H` hides both. No other text. |
 | Visitor-facing copy | **English.** |
 
 ## 1. Experience flow = state machine
 
 ```
 lobby ──▶ input ──▶ born ──▶ grid ──▶ open ⟲ (no end)
- (join)   (A or B)  (birth)  (cages)  (one tank)
+ (join)   (feed)    (birth)  (cages)  (one tank)
 ```
 
 | stage | Projection (`/screen`) | Phone (`/phone`) | Next |
 | --- | --- | --- | --- |
 | `lobby` | Only the join QR, floating in the water | No words: turn the phone to look around the water; a rocking-phone icon every 3s | Admin key |
-| `input` | A: the grid; each betta fades in (with its cube) in a random front cell as soon as its visitor releases it. B: the current question, 0/10 scale, answered count | A: growing betta + fake SNS app (45s), then swipe up to release. B: question + dial pad + live preview of my betta | A: everyone in the round released → `born`. B: advances by itself once everyone answered (950ms reveal), last question → `born` |
+| `input` | The grid; each betta fades in (with its cube) in a random front cell as soon as its visitor releases it | Growing betta + fake SNS app (45s), then swipe up to release | Everyone in the round released → `born` |
 | `born` | The grid, empty at first. Each betta fades in with its cube in a random front cell as it is released. Once everyone is in, grey placeholder bettas fade in with their cubes while the camera pulls back to 2.2× its distance: the cells in view first (empty front cells leading), then each cube as it comes into the frame, so the tank keeps growing at its edges (14s); the huge full grid holds for 20s, and the camera eases back in for `grid` | My betta in the middle; the camera pulls back to show its cube in a grid; a swipe-up icon; swipe to release; then the phone **is** the betta, inside its cell (§2-3c) | Auto after the fill + 20s hold. Admin `Space`: start the fill now / skip the hold |
 | `grid` | Same lattice, every cell full; cracks spread over the real bettas' cells with taps; a tapping-finger icon over the shared gauge | Still inside the cell: tap anywhere to push on the front glass, which cracks; a hairline shared gauge | Shared total ≥ threshold, or 60s timeout (server decides) |
 | `open` | The empty grid fades away (2.2s) over the open tank; each betta drifts out of its own cell and swims in one 3D tank; a steering icon until every phone shows its card | A bare console (one ring, one dot) for 90s, then the betta card (Save / Share) | None (admin reset only) |
 
-Admin keys on `/screen` (only with `?key=<ADMIN_KEY>` when the server has one): `1`/`2` mode A/B (lobby only), `Space`/`→` next stage or next question, `Shift+Space` skip the questions to `born`, `R` reset, `P` drop disconnected phones, `H` hide HUD.
+Admin keys on `/screen` (only with `?key=<ADMIN_KEY>` when the server has one; shown nowhere): `Space`/`→` next stage, `Shift+Space` skip `input` to `born`, `R` reset, `P` drop disconnected phones, `H` hide the player count and size panel. `main[data-stage]` carries the stage for tests.
 
 ### 1-1. Endless open: joining and leaving
 
-- **Late visitors**: joining after `lobby` puts the phone straight into `input` alone. In B they answer the questions at their own pace; the room keeps going. A betta released before the placeholders start filling still gets a grid cell; later ones have no cell and enter the tank from a side edge in `open` (and get their 90s from then).
+- **Late visitors**: joining after `lobby` puts the phone straight into `input` alone, scrolling its own feed; the room keeps going. A betta released before the placeholders start filling still gets a grid cell; later ones have no cell and enter the tank from a side edge in `open` (and get their 90s from then).
 - **Stalls**: a betta that is made but not released within 30s is released by the server, so one idle phone doesn't hold up the fill.
   - Not built yet: the single cube a late betta should break out of on its own (lower threshold, own timeout).
-- **Leaving**: a phone that disconnects before it has a betta is dropped at once (B keeps dial progress across a reconnect). With a betta, it goes to `fading` in `open` and is removed after 3 minutes. Reconnecting in time brings it back.
+- **Leaving**: a phone that disconnects before it has a betta is dropped at once. With a betta, it goes to `fading` in `open` and is removed after 3 minutes. Reconnecting in time brings it back.
   - Not built yet: the visual fade on the screen.
-- **Admin reset**: for demos. One round of A → reset → one round of B. Reset keeps connected phones and clears what they did.
+- **Admin reset**: between rounds. Reset keeps connected phones and clears what they did.
 
 ## 2. Architecture
 
@@ -56,15 +56,15 @@ Admin keys on `/screen` (only with `?key=<ADMIN_KEY>` when the server has one): 
 
 **The server owns the session; the screen owns the physics.**
 
-- **Server (authoritative)**: stage, mode, players, each player's raw input and genome, the shared effort, timers, the shared question index. **Genomes are computed on the server only.** A sleeping phone or a reloaded screen recovers from the next `state`.
+- **Server (authoritative)**: stage, players, each player's raw input and genome, the shared effort, timers. **Genomes are computed on the server only.** A sleeping phone or a reloaded screen recovers from the next `state`.
 - **Screen**: betta positions, schooling, personal space, water current, rendering. The server doesn't know positions; it only relays steering.
 - **Phone**: input device. `playerId` lives in localStorage, so a reconnect returns to the same betta.
 
-The server runs with Node 24 type stripping (`node server/index.ts`). It imports `lib/protocol.ts`, `lib/genome.ts`, `lib/questions.ts` and `lib/lan.ts` at runtime, so those use `.ts` import paths (`allowImportingTsExtensions`) and only erasable TypeScript (no enums).
+The server runs with Node 24 type stripping (`node server/index.ts`). It imports `lib/protocol.ts`, `lib/genome.ts`, `lib/feed.ts`, `lib/gridLayout.ts` and `lib/lan.ts` at runtime, so those use `.ts` import paths (`allowImportingTsExtensions`) and only erasable TypeScript (no enums).
 
-### 2-1. `Genome`: one type for both modes
+### 2-1. `Genome`
 
-Everything after `input` works the same whichever mode made the genome.
+Five axes, all from the feed (`genomeFromFeed`, server only).
 
 ```ts
 type Genome = {
@@ -73,32 +73,12 @@ type Genome = {
   finLength: number;    // 0–1 fins = wanting to be seen
   boundary: number;     // 0–1 personal space radius (partitioned tank)
   sociability: number;  // 0–1 pull toward similar bettas
-  markings?: number;    // 0–1 body and fin pattern          (B only)
-  reactivity?: number;  // 0–1 how quickly the wander turns   (B only)
-  glide?: number;       // 0–1 how wide the idle wander is    (B only)
 };
 ```
 
-The three optional axes default to 0.5 where they are read. `genomeDistance` (used for schooling) still looks only at the first five.
+`genomeDistance` (used for schooling) looks at all five. Mode B's extra axes (markings, reactivity, glide) went with it; the fish use their middle values.
 
-### 2-2. Mode B: 8 questions, 0–10 (`lib/questions.ts`)
-
-0 = "Not at all", 10 = "Very much". Mapping: `value / 10` (unanswered = 5). The phone shows a live preview that grows more complete with each answer, and after sending says which trait the answer shaped.
-
-| # | Question | Axis | Shown as |
-| --- | --- | --- | --- |
-| 1 | Do you edit your photos or captions several times before you post? | `saturation` | colour intensity |
-| 2 | Do you often post your everyday life on social media? | `finLength` | tail fin length |
-| 3 | Do you tap on posts about topics you don't usually care about? | `hue` (`0.62 − v × 0.59`) | body colour |
-| 4 | Do you post again in a format that got a good response? | `markings` | body and fin markings |
-| 5 | When a stranger sends you a follow request, do you check their account first? | `boundary` | personal space |
-| 6 | Do you often like or comment on your friends' posts? | `sociability` | pull toward other bettas |
-| 7 | When a notification pops up, do you stop what you're doing to check it? | `reactivity` | quickness of movement |
-| 8 | When you open your feed, do you scroll fast instead of reading each post? | `glide` | swimming range |
-
-The whole room answers the same question, shown on the projection. When every connected participant has answered, it moves on by itself; the admin can also push it. Wording is up for review.
-
-### 2-3. Mode A: the betta grows above the feed (`lib/feed.ts`, `app/phone/modes/FakeFeed.tsx`)
+### 2-3. The feed: the betta grows above it (`lib/feed.ts`, `app/phone/modes/FakeFeed.tsx`)
 
 Why: in v0 the visitor never saw the betta while playing, so the fish in `born` felt like a result, not something they made. Now they watch their habits shape it.
 
@@ -147,17 +127,16 @@ Why: in v0 the visitor never saw the betta while playing, so the fish in `born` 
 | Direction | Event | Payload |
 | --- | --- | --- |
 | phone → server | `hello` | `{ role: "phone", room, playerId }` |
-| phone → server | `answer` (B) | `{ q, value }` (0–10) |
-| phone → server | `feed` (A) | `{ events: FeedEvent[], start?, done? }` |
+| phone → server | `feed` | `{ events: FeedEvent[], start?, done? }` |
 | phone → server | `release` | — |
 | phone → server | `effort` | `{ amount }` (clamped to 0–3) |
 | phone → server → screen | `steer` | `{ x, y }`, relayed with `playerId`; server only relays |
 | screen → server | `hello` | `{ role: "screen", room, adminKey? }` |
-| screen → server | `admin` | `setMode` / `next { question? }` / `goto` / `reset` / `prune` |
-| server → all | `state` | `SessionState`: `{ room, stage, mode, players[], effort{total, threshold}, deadline, fillAt, gridSize, question }` (throttled to 100ms) |
+| screen → server | `admin` | `next` / `goto` / `reset` / `prune` |
+| server → all | `state` | `SessionState`: `{ room, stage, players[], effort{total, threshold}, deadline, fillAt, gridSize }` (throttled to 100ms) |
 | server → phone | `rejected` | `{ reason }` (wrong room) |
 
-- `players[]`: `{ id, connected, phase, done, genome, released, slot, openUntil, effort }`. A phone's own entry also carries `question` (index, answered, live preview genome).
+- `players[]`: `{ id, connected, phase, done, genome, released, slot, openUntil, effort }`.
 - `SessionState` also has `fillAt` (born: when the placeholders started) and `gridSize` (the player count the grid layout is built for).
 - `phase`: `waiting` / `input` / `caged` / `free` / `fading`. Players can be in different phases because of late joiners.
 
@@ -168,7 +147,7 @@ app/
   page.tsx                   landing: just the links to /phone and /screen over the water
   _components/               BettaShape (SVG fallback), ExhibitionBetta (cover), PaintedWater + water shaders, Hint (icons)
   screen/
-    page.tsx  Screen.tsx     projection, admin keys, lobby/question overlay
+    page.tsx  Screen.tsx     projection, admin keys, lobby QR, player count
     ProjectionControls.tsx   projection size calibration
     scenes/                  Grid (input A + born + grid; + GridTank, GridFillerFish, cracks), Open (+ WaterTank),
                              BettaCanvas, BettaModel, bettaMesh, bettaMaterial,
@@ -180,14 +159,13 @@ app/
     Release.tsx              born: swipe up to release
     Cell.tsx                 after release until open: inside my cell (first person)
     useDeviceLook.ts         orientation sensor → yaw/pitch, drag fallback, taps
-    modes/                   FakeFeed (A), QuestionDial (B)
+    modes/                   FakeFeed (the 45s feed)
     controls/                Joystick (open)
     card/                    BettaCard, CardSnapshot, composeCard, traits (end of open)
 lib/
   protocol.ts                events and state types (server + pages)
   genome.ts                  A/B → Genome, distance (runs on the server)
-  questions.ts               Mode B questions
-  feed.ts                    Mode A posts and notifications
+  feed.ts                    feed posts and notifications
   gridLayout.ts              stage size + grid cells (screen and server)
   playerId.ts  lan.ts
 hooks/useBetta.ts            socket connect + state subscription
@@ -208,10 +186,10 @@ Not created yet: `scripts/bots.ts` (N fake phones for a 15–20 person test alon
 | 11/19 | protocol, server stage machine, room code, dev scripts; Mode A v0; born; grid + open v0; Vercel + EC2 deploy | Done |
 | 11/20 | Mode B dial pad, 3D wide-angle grid, phone preview matching the screen betta | Done |
 | 11/21 | 3D bettas in all stages, shader water, English copy, plan v2; Mode A redesign (growing betta, bubbles), random cells + placeholder fill, betta card | Done |
-| 11/22 | Real-device check of Mode A and the card (iOS share sheet), late-joiner single cube, fade-out on leave | Next |
-| 11/23 | `bots.ts` with 15–20 phones, real iOS and Android devices, leave → fade, repeated resets | Demo: one round of A + one round of B without breaks |
+| 11/22 | First-person cell view on the phone, icon hints, camera pull-back fill, card polish, Mode B removed; real-device check of the feed, motion access and the card (iOS share sheet) | In progress |
+| 11/23 | `bots.ts` with 15–20 phones, real iOS and Android devices, leave → fade, repeated resets | Demo: repeated rounds without breaks |
 
-If time runs short, drop in this order: colour bleed → late-joiner single cube (join only in the lobby instead) → number of axes Mode A covers.
+If time runs short, drop in this order: colour bleed → late-joiner single cube (join only in the lobby instead) → number of axes the feed covers.
 
 ## 5. Risks / notes
 
@@ -238,8 +216,7 @@ If time runs short, drop in this order: colour bleed → late-joiner single cube
 ## 7. Open decisions
 
 - [x] **Mode A redesign**: the betta grows above the feed; bubbles carry each action to it (§2-3)
-- [ ] Mode B question wording (§2-2)
-- [ ] Mode A copy; whether 30 banners over 45s feels right
+- [ ] Feed copy; whether 30 banners over 45s feels right
 - [ ] Card wording (`app/phone/card/traits.ts`) and whether the 90s in open is the right length
 - [ ] Effort threshold, timeout, fade time: settle by running it with real people
 - [ ] Exhibition date, projector resolution and aspect, expected maximum visitors

@@ -8,7 +8,7 @@ const clamp = (v: number) => Math.min(1, Math.max(0, v));
 /** a / (a + b) with a neutral prior, so one event doesn't pin an axis to 0 or 1. */
 const ratio = (a: number, b: number, prior = 1) => (a + prior * 0.5) / (a + b + prior);
 
-/** Mode A: what the visitor did in the 30s feed. */
+/** What the visitor did in the 45s feed. */
 export function genomeFromFeed(events: FeedEvent[]): Genome {
   const count = (kind: FeedEvent["kind"], tag?: FeedEvent["tag"]) =>
     events.filter((e) => e.kind === kind && (tag === undefined || e.tag === tag)).length;
@@ -48,21 +48,6 @@ export function genomeFromFeed(events: FeedEvent[]): Genome {
   const sociability = ratio(answered * 2, ignoredAll, 3);
 
   return { hue, saturation: clamp(saturation), finLength, boundary: clamp(boundary), sociability: clamp(sociability) };
-}
-
-/** Each dial answer changes one visible or behavioral trait. Skipped items stay neutral. */
-export function genomeFromAnswers(answers: readonly (number | null)[]): Genome {
-  const v = (i: number) => clamp((answers[i] ?? 5) / 10);
-  return {
-    saturation: v(0),
-    finLength: v(1),
-    hue: 0.62 - v(2) * 0.59,
-    markings: v(3),
-    boundary: v(4),
-    sociability: v(5),
-    reactivity: v(6),
-    glide: v(7),
-  };
 }
 
 /** Euclidean distance in the 5 axes (hue taken around the circle), 0 … ~2.2. */

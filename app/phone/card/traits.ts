@@ -1,5 +1,4 @@
-// Genome → the lines printed on a visitor's betta card. Same words for both
-// modes; Mode B's extra axes only appear when the betta has them.
+// Genome → the lines printed on a visitor's betta card.
 
 import type { Genome } from "@/lib/protocol";
 
@@ -26,8 +25,5 @@ export function traits(genome: Genome): Trait[] {
     { label: "Space", text: pick(genome.boundary, ["Lets others swim close", "Keeps a little room", "Needs wide water of its own"]) },
     { label: "Company", text: pick(genome.sociability, ["Swims alone", "Joins in now and then", "Drifts toward the others"]) },
   ];
-  if (genome.markings !== undefined) lines.push({ label: "Markings", text: pick(genome.markings, ["Faint", "Patterned", "Bold"]) });
-  if (genome.reactivity !== undefined) lines.push({ label: "Reflex", text: pick(genome.reactivity, ["Calm, unhurried turns", "Turns when called", "Turns at every ping"]) });
-  if (genome.glide !== undefined) lines.push({ label: "Range", text: pick(genome.glide, ["Stays close to home", "Wanders a little", "Roams the whole tank"]) });
   return lines;
 }

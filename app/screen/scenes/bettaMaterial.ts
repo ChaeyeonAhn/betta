@@ -5,7 +5,6 @@ type MaterialStyle = {
   saturation: number;
   finLength: number;
   pattern: number;
-  markings?: number;
   seed: number;
   filler: boolean;
 };
@@ -17,7 +16,7 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
     bettaAtlas: { value: atlas },
     bettaColor: { value: new Color().setHSL(style.hue, 0.68 + style.saturation * 0.29, 0.51, SRGBColorSpace) },
     bettaAccent: { value: new Color().setHSL((style.hue + 0.58) % 1, 0.90, 0.52, SRGBColorSpace) },
-    bettaStrength: { value: (0.44 + style.saturation * 0.43) * (style.markings === undefined ? 1 : 0.68 + style.markings * 0.60) },
+    bettaStrength: { value: 0.44 + style.saturation * 0.43 },
     bettaFinLength: { value: 0.72 + style.finLength * 0.4 },
     bettaFin: { value: Number(fin) },
     bettaPattern: { value: style.pattern },
