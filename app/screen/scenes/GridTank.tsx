@@ -1,5 +1,6 @@
 "use client";
 
+import { PaintedWater } from "@/app/_components/PaintedWater";
 import { Line } from "@react-three/drei";
 import { useMemo } from "react";
 import { DoubleSide } from "three";
@@ -85,6 +86,7 @@ export function GridTank({ players, layout }: { players: GridPlayer[]; layout: L
   return (
     <BettaCanvas background={null} distance={GRID_CAMERA_DISTANCE} scenery={(
       <>
+        <PaintedWater brightness={.32} />
         <fog attach="fog" args={["#090f1e", GRID_CAMERA_DISTANCE + side * 0.25, endOfGrid]} />
         <Line points={scene.distant} segments color="#242936" lineWidth={0.78} fog toneMapped={false} />
         {scene.quietFronts.length > 0 && (

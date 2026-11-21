@@ -1,4 +1,6 @@
 .root {
+  position: relative;
+  isolation: isolate;
   min-height: 100dvh;
   display: grid;
   place-content: center;
@@ -7,6 +9,8 @@
   color: var(--pearl);
   text-align: center;
 }
+
+.message { position: relative; }
 
 .title {
   margin: 0;

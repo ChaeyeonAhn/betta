@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import { getPlayerId, shortTag } from "@/lib/playerId";
 import type { FeedEvent, Hello, Steer } from "@/lib/protocol";
+import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import { Joystick } from "./controls/Joystick";
 import { TapPad } from "./controls/TapPad";
 import { FakeFeed } from "./modes/FakeFeed";
@@ -71,7 +72,8 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
 function Centered({ children, dim }: { children: React.ReactNode; dim?: boolean }) {
   return (
     <main className={styles.root}>
-      <div className={dim ? styles.dim : undefined}>{children}</div>
+      <WaterBackdrop />
+      <div className={`${styles.message} ${dim ? styles.dim : ""}`}>{children}</div>
     </main>
   );
 }

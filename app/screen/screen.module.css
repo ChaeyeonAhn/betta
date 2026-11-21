@@ -8,13 +8,13 @@
 
 /* Fixed source pixels; only ProjectionControls changes the output scale. */
 .frame {
+  isolation: isolate;
   position: absolute;
   top: 50%;
   left: 50%;
   transform-origin: center;
   overflow: hidden;
   background: var(--water-paper);
-  background-size: cover, 100% 100%;
 }
 
 .frame::after {

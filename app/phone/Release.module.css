@@ -1,4 +1,5 @@
 .root {
+  isolation: isolate;
   position: fixed;
   inset: 0;
   display: flex;

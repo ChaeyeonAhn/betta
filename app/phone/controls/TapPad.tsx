@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import type { SessionState } from "@/lib/protocol";
+import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import styles from "./controls.module.css";
 
 export function TapPad({ state, mine, onTap }: { state: SessionState; mine: number; onTap: () => void }) {
@@ -14,6 +15,7 @@ export function TapPad({ state, mine, onTap }: { state: SessionState; mine: numb
 
   return (
     <main className={styles.root}>
+      <WaterBackdrop />
       <p className={styles.top}>다 함께 두드리면 칸막이가 열려요.</p>
       <button
         className={`${styles.pad} ${pressed ? styles.pressed : ""}`}

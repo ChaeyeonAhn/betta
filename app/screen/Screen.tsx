@@ -5,6 +5,7 @@ import { useBetta } from "@/hooks/useBetta";
 import type { AdminCommand, Hello } from "@/lib/protocol";
 import { ANSWER_SCALE, SNS_QUESTIONS } from "@/lib/questions";
 import { ProjectionControls, useProjectionScale } from "./ProjectionControls";
+import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import { ExhibitionBetta } from "@/app/_components/ExhibitionBetta";
 import { Born } from "./scenes/Born";
 import { Grid } from "./scenes/Grid";
@@ -81,6 +82,7 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
         height: STAGE_H,
         transform: `translate(-50%, -50%) scale(${projection.scale.x / 100}, ${projection.scale.y / 100})`,
       }}>
+        {(!stage || stage === "lobby" || stage === "input") && <WaterBackdrop />}
         {stage === "born" && <Born players={players} />}
         {stage === "grid" && state && <Grid state={state} />}
         {stage === "open" && <Open players={players} socket={socket} />}

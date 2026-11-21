@@ -8,6 +8,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
+import { PaintedWater } from "@/app/_components/PaintedWater";
 import { BettaModel } from "./BettaModel";
 import { BettaCanvas, BettaVisual, stagePoint } from "./BettaCanvas";
 import { BettaShape } from "@/app/_components/BettaShape";
@@ -24,7 +25,7 @@ export function Born({ players }: { players: PlayerView[] }) {
   return (
     <section className={styles.root}>
       <BettaVisual fallback={null}>
-        <BettaCanvas background={null}>
+        <BettaCanvas background={null} scenery={<PaintedWater />}>
           {born.map((p, i) => {
             if (!p.released || !p.genome) return null;
             const { x, y } = projectedFishCenter(slots[i], side);

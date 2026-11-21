@@ -7,6 +7,7 @@
 import { useRef, useState } from "react";
 import type { Genome } from "@/lib/protocol";
 import { BettaPreview } from "./BettaPreview";
+import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import styles from "./Release.module.css";
 
 const SWIPE_PX = 70;
@@ -47,6 +48,7 @@ export function Release({ genome, playerId, tag, released, onRelease }: {
         setDrag(0);
       }}
     >
+      <WaterBackdrop />
       <p className={styles.top}>{gone ? "큰 화면에서 내 베타를 찾아보세요." : "나의 베타가 태어났어요."}</p>
 
       <div className={`${styles.fish} ${gone ? styles.gone : ""}`} style={gone ? undefined : { transform: `translateY(${drag}px)` }}>

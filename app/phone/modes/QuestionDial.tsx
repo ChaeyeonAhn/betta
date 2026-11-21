@@ -5,6 +5,7 @@ import { ANSWER_SCALE, SNS_QUESTIONS } from "@/lib/questions";
 import { shortTag } from "@/lib/playerId";
 import type { PlayerQuestion } from "@/lib/protocol";
 import { BettaPreview } from "../BettaPreview";
+import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import styles from "./QuestionDial.module.css";
 
 export function QuestionDial({ question, playerId, onAnswer }: {
@@ -16,6 +17,7 @@ export function QuestionDial({ question, playerId, onAnswer }: {
   const formation = (question.index + Number(question.answered)) / SNS_QUESTIONS.length;
   return (
     <main className={styles.root}>
+      <WaterBackdrop />
       <header className={styles.question}>
         <p className={styles.progress}>{question.index + 1} / {SNS_QUESTIONS.length}</p>
         <h1>{item.prompt}</h1>

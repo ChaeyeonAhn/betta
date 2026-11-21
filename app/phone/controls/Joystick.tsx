@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Genome, Steer } from "@/lib/protocol";
 import { BettaPreview } from "../BettaPreview";
+import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import styles from "./controls.module.css";
 
 const RADIUS = 110;
@@ -71,6 +72,7 @@ export function Joystick({ genome, playerId, tag, onSteer }: {
       >
         <div className={styles.knob} style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />
       </div>
+      <WaterBackdrop />
       <p className={styles.top}>원을 드래그해 베타가 갈 방향을 정하세요.</p>
     </main>
   );
