@@ -2,7 +2,9 @@
 
 // First screen on the phone: no words, just the water. Turning the phone left
 // or right pans across the same panorama the projection shows, and every few
-// seconds a small phone icon rocks side to side as the only hint.
+// seconds a small phone icon rocks side to side as the only hint. On an iPhone
+// that hasn't granted motion access yet, a tapping finger comes first: the tap
+// is what lets iOS ask.
 
 import { Hint } from "@/app/_components/Hint";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
@@ -13,11 +15,11 @@ import { useDeviceLook } from "./useDeviceLook";
 const RANGE = 45;
 
 export function LookAround() {
-  const { look, handlers } = useDeviceLook({ clampYaw: RANGE });
+  const { look, handlers, needsTap } = useDeviceLook({ clampYaw: RANGE });
   return (
     <main className={styles.root} {...handlers}>
       <WaterBackdrop look={() => look.current.yaw / RANGE} />
-      <Hint kind="turn" />
+      <Hint kind={needsTap ? "tap" : "turn"} />
     </main>
   );
 }

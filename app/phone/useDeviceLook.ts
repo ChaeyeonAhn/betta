@@ -5,7 +5,7 @@
 // without a sensor (desktop, or a plain-http page) drag to look instead; a
 // touch that barely moves counts as a tap.
 
-import { useEffect, useRef, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 export type Look = { yaw: number; pitch: number };
 
@@ -43,6 +43,8 @@ export function useDeviceLook({ clampYaw, onTap }: {
   const tap = useRef(onTap);
   tap.current = onTap;
   const drag = useRef<{ x: number; y: number; moved: boolean; from: Look } | null>(null);
+  // iOS until a tap grants motion access: true when the sensor needs a tap and hasn't spoken yet.
+  const [needsTap, setNeedsTap] = useState(false);
 
   useEffect(() => {
     let origin: Look | null = null;
@@ -50,6 +52,7 @@ export function useDeviceLook({ clampYaw, onTap }: {
     let yaw = 0;
     const onTurn = (e: DeviceOrientationEvent) => {
       if (e.alpha === null || e.beta === null || e.gamma === null) return;
+      setNeedsTap(false);
       const now = pose(e.alpha, e.beta, e.gamma);
       if (origin === null) {
         origin = now;
@@ -78,12 +81,17 @@ export function useDeviceLook({ clampYaw, onTap }: {
         })
         .catch(() => {});
     };
+    // If access was granted earlier in this visit, events simply start; only
+    // ask for a tap when nothing has arrived after a moment.
+    let quiet: ReturnType<typeof setTimeout> | undefined;
     if (Orientation?.requestPermission) {
       window.addEventListener("touchend", ask);
       window.addEventListener("click", ask);
+      quiet = setTimeout(() => setNeedsTap(origin === null), 800);
     }
 
     return () => {
+      clearTimeout(quiet);
       window.removeEventListener("deviceorientation", onTurn);
       window.removeEventListener("touchend", ask);
       window.removeEventListener("click", ask);
@@ -114,5 +122,5 @@ export function useDeviceLook({ clampYaw, onTap }: {
     onPointerCancel: () => { drag.current = null; },
   };
 
-  return { look, handlers };
+  return { look, handlers, needsTap };
 }

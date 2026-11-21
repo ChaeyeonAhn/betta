@@ -15,7 +15,7 @@
 // and the betta on the projection end up the same.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { APP_NAME, BANNER_MS, NOTICES, POSTS, noticeSchedule, type CardAction, type Notice } from "@/lib/feed";
+import { BANNER_MS, NOTICES, POSTS, noticeSchedule, type CardAction, type Notice } from "@/lib/feed";
 import { genomeFromFeed } from "@/lib/genome";
 import { FEED_MS, type FeedEvent } from "@/lib/protocol";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
@@ -227,10 +227,6 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
           touchRef.current = { x: e.clientX, y: e.clientY };
         }}
       >
-        <header className={styles.header}>
-          <span className={styles.appName}>{APP_NAME}</span>
-        </header>
-
         <main className={styles.feed}>
           {FEED.map((post) => (
             <PostView key={post.key} post={post} liked={liked.has(post.key)} onLike={() => like(post)} log={log} />
@@ -259,7 +255,6 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
               }}
             >
               <button className={styles.bannerBody} onClick={() => openBanner(banner)}>
-                <span className={styles.bannerApp}>{APP_NAME}</span>
                 <span>{banner.notice.text}</span>
               </button>
               <button className={styles.bannerClose} aria-label="Dismiss" onClick={() => swipeBanner(banner)}>

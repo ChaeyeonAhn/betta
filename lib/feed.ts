@@ -1,10 +1,8 @@
 // Mode A content: the posts in the fake feed and the notifications that fall
-// over it during the 45 seconds. The app is "Bettagram".
+// over it during the 45 seconds. The app has no name on screen.
 // Copy is placeholder and up for review (docs/plan.md §7).
 
 import type { FeedTag } from "./protocol.ts";
-
-export const APP_NAME = "Bettagram";
 
 export type Post = {
   id: string;

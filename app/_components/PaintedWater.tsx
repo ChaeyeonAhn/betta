@@ -114,7 +114,9 @@ export function PaintedWater({ current, variant = "seabed", look, followCamera =
 }
 
 // Standalone water renders at 30 fps while visible. Fish scenes use their own loop.
-function WaterAnimation() {
+// `steered`: someone is looking around in it, so keep drawing even with
+// reduced motion (PaintedWater then holds the water still and only pans).
+function WaterAnimation({ steered = false }: { steered?: boolean }) {
   const invalidate = useThree((state) => state.invalidate);
   useEffect(() => {
     const preference = matchMedia("(prefers-reduced-motion: reduce)");
@@ -122,7 +124,7 @@ function WaterAnimation() {
     const sync = () => {
       clearInterval(timer);
       invalidate();
-      if (!preference.matches && !document.hidden) timer = setInterval(invalidate, 1000 / 30);
+      if ((steered || !preference.matches) && !document.hidden) timer = setInterval(invalidate, 1000 / 30);
     };
     sync();
     preference.addEventListener("change", sync);
@@ -132,7 +134,7 @@ function WaterAnimation() {
       preference.removeEventListener("change", sync);
       document.removeEventListener("visibilitychange", sync);
     };
-  }, [invalidate]);
+  }, [invalidate, steered]);
   return null;
 }
 
@@ -143,7 +145,7 @@ export function WaterBackdrop({ look }: { look?: () => number } = {}) {
         gl={{ antialias: false, alpha: false }}
         style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none" }}>
         <PaintedWater look={look} />
-        <WaterAnimation />
+        <WaterAnimation steered={!!look} />
       </Canvas>
     </BettaVisual>
   );

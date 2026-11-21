@@ -28,7 +28,7 @@ export function Cell({ state, me, slot, onPush }: {
       ? [{ id: player.id, genome: player.genome, slot: player.slot }]
       : []);
   const walls = state.stage === "grid";
-  const { look, handlers } = useDeviceLook({
+  const { look, handlers, needsTap } = useDeviceLook({
     onTap: walls ? () => {
       onPush();
       navigator.vibrate?.(8); // Android only; iOS Safari ignores it
@@ -48,7 +48,7 @@ export function Cell({ state, me, slot, onPush }: {
           pov={{ slot, id: me.id, effort: me.effort, look }}
         />
       </BettaVisual>
-      <Hint kind={walls ? "tap" : "turn"} size={64} className={styles.hint} />
+      <Hint kind={walls || needsTap ? "tap" : "turn"} size={64} className={styles.hint} />
       {walls && (
         <div className={styles.gauge}>
           <div className={styles.fill} style={{ width: `${share * 100}%` }} />
