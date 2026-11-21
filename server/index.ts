@@ -13,8 +13,12 @@ import { lanAddresses } from "../lib/lan.ts";
 import {
   DECAY_PER_PLAYER,
   DEFAULT_ROOM,
+  FILL_HOLD_MS,
+  FILL_MS,
   GRID_MS,
+  OPEN_MS,
   QUESTION_COUNT,
+  RELEASE_TIMEOUT_MS,
   TAPS_PER_PLAYER,
   STAGES,
   type AdminCommand,
@@ -30,6 +34,7 @@ import {
   type Stage,
 } from "../lib/protocol.ts";
 import { genomeFromAnswers, genomeFromFeed } from "../lib/genome.ts";
+import { createGridLayout } from "../lib/gridLayout.ts";
 
 const PORT = Number(process.env.PORT) || 4000;
 const ROOM = process.env.ROOM || DEFAULT_ROOM;
@@ -56,7 +61,11 @@ type Player = {
   feed: FeedEvent[];
   feedDone: boolean;
   genome: Genome | null;
+  /** Epoch ms the genome was made, for the release timeout. */
+  genomeAt: number | null;
   released: boolean;
+  slot: number | null;
+  openUntil: number | null;
   effort: number;
 };
 
@@ -69,6 +78,9 @@ const session = {
   deadline: null as number | null,
   questionIndex: null as number | null,
   questionAdvanceAt: null as number | null,
+  /** Player count the grid layout is built for; only grows during a round so cells keep their place. */
+  gridSize: 0,
+  fillAt: null as number | null,
 };
 
 /** Players who have a betta: the ones who can push walls and swim. */
@@ -85,9 +97,53 @@ function newPlayer(id: string): Player {
     feed: [],
     feedDone: false,
     genome: null,
+    genomeAt: null,
     released: false,
+    slot: null,
+    openUntil: null,
     effort: 0,
   };
+}
+
+function setGenome(player: Player, genome: Genome) {
+  player.genome = genome;
+  player.genomeAt = Date.now();
+  // A late visitor who finishes while the tank is open swims in right away.
+  if (session.stage === "open") player.openUntil = Date.now() + OPEN_MS;
+}
+
+/** Whether a released betta still gets a cell: before the placeholders start filling the grid. */
+function seating() {
+  return session.fillAt === null && (session.stage === "born" || (session.stage === "input" && session.mode === "A"));
+}
+
+/** Players in the current round: the ones the grid waits for. */
+function inRound(player: Player) {
+  return session.stage === "input" ? player.phase === "input" : player.phase === "caged";
+}
+
+function gridCells() {
+  return createGridLayout(Math.max(1, session.gridSize)).slots.length;
+}
+
+function release(player: Player) {
+  if (!player.genome || player.released) return;
+  player.released = true;
+  if (!seating()) return;
+  const round = [...session.players.values()].filter((p) => p.slot !== null || inRound(p)).length;
+  session.gridSize = Math.max(session.gridSize, round);
+  const taken = new Set([...session.players.values()].map((p) => p.slot));
+  const free = Array.from({ length: gridCells() }, (_, i) => i).filter((i) => !taken.has(i));
+  player.slot = free.length ? free[Math.floor(Math.random() * free.length)] : null;
+}
+
+/** Everyone in the round has a seat: placeholders fill the rest, the full grid holds, then the walls go up. */
+function startFill() {
+  if (session.stage !== "born") setStage("born");
+  session.fillAt = Date.now();
+  session.deadline = session.fillAt + FILL_MS + FILL_HOLD_MS;
+  console.log("grid filling");
+  scheduleBroadcast();
 }
 
 function isDone(player: Player) {
@@ -131,18 +187,25 @@ function setStage(stage: Stage) {
   const wasQuestionnaire = session.questionIndex !== null;
   session.stage = stage;
   session.deadline = null;
+  session.fillAt = null;
   session.questionAdvanceAt = null;
+  if (stage === "input") session.gridSize = [...session.players.values()].filter((p) => p.socketId).length;
   session.questionIndex = session.mode === "B" && stage === "input" ? 0 : null;
 
   for (const player of session.players.values()) {
+    if (stage === "input") {
+      player.slot = null;
+      player.openUntil = null;
+    }
     if (session.questionIndex !== null && player.socketId) {
       player.answers.fill(null);
       player.genome = null;
+      player.genomeAt = null;
       player.released = false;
       player.sharedInput = true;
     } else if (wasQuestionnaire && player.sharedInput) {
       if (stage !== "lobby" && (player.socketId || player.answers.some((answer) => answer !== null))) {
-        player.genome = genomeFromAnswers(player.answers);
+        setGenome(player, genomeFromAnswers(player.answers));
       }
       player.sharedInput = false;
     } else if (stage !== "lobby" && player.phase === "input" && !player.genome) {
@@ -158,6 +221,9 @@ function setStage(stage: Stage) {
     session.deadline = Date.now() + GRID_TIMEOUT_MS;
     for (const player of session.players.values()) player.effort = 0;
   }
+  if (stage === "open") {
+    for (const player of session.players.values()) if (player.genome) player.openUntil = Date.now() + OPEN_MS;
+  }
   console.log(`stage → ${stage}`);
   scheduleBroadcast();
 }
@@ -169,6 +235,7 @@ function reset() {
     else session.players.set(id, { ...newPlayer(id), socketId: player.socketId });
   }
   session.effortTotal = 0;
+  session.gridSize = 0;
   setStage("lobby");
 }
 
@@ -186,6 +253,12 @@ function runAdmin(command: AdminCommand) {
         break;
       }
       if (command.question !== undefined) break;
+      // Born: start the placeholders now; during the fill or the hold, go straight to the walls.
+      if (session.stage === "born") {
+        if (session.fillAt === null) startFill();
+        else setStage("grid");
+        break;
+      }
       const index = STAGES.indexOf(session.stage);
       if (index < STAGES.length - 1) setStage(STAGES[index + 1]);
       break;
@@ -215,10 +288,14 @@ function snapshot(): SessionState {
       done: isDone(p),
       genome: p.genome,
       released: p.released,
+      slot: p.slot,
+      openUntil: p.openUntil,
       effort: p.effort,
     })),
     effort: { total: Math.round(session.effortTotal), threshold: session.effortThreshold },
     deadline: session.deadline,
+    fillAt: session.fillAt,
+    gridSize: Math.max(1, session.gridSize),
     question: sharedQuestion(),
   };
 }
@@ -326,7 +403,7 @@ io.on("connection", (socket) => {
     if (!question || q !== question.index || question.answered) return;
     player.answers[q] = value;
     if (!player.sharedInput && q === QUESTION_COUNT - 1) {
-      player.genome = genomeFromAnswers(player.answers);
+      setGenome(player, genomeFromAnswers(player.answers));
       player.phase = phaseForStage(session.stage);
     }
     scheduleBroadcast();
@@ -339,7 +416,7 @@ io.on("connection", (socket) => {
     player.feed.push(...events.slice(0, 500));
     if (done) {
       player.feedDone = true;
-      player.genome = genomeFromFeed(player.feed);
+      setGenome(player, genomeFromFeed(player.feed));
       console.log(`  genome ${player.id.slice(0, 6)} ${JSON.stringify(player.genome)}`);
     }
     scheduleBroadcast();
@@ -361,8 +438,8 @@ io.on("connection", (socket) => {
 
   socket.on("release", () => {
     const player = playerOf(socket);
-    if (!player || !player.genome || player.released) return;
-    player.released = true;
+    if (!player) return;
+    release(player);
     scheduleBroadcast();
   });
 
@@ -402,6 +479,21 @@ setInterval(() => {
     } else {
       session.questionAdvanceAt = null;
     }
+  }
+  if (seating()) {
+    const now = Date.now();
+    for (const player of session.players.values()) {
+      if (player.genome && !player.released && player.genomeAt && now - player.genomeAt > RELEASE_TIMEOUT_MS) {
+        release(player);
+        scheduleBroadcast();
+      }
+    }
+    const round = [...session.players.values()].filter((p) => p.socketId && inRound(p));
+    if (round.length && round.every((p) => p.genome && p.released)) startFill();
+  }
+  if (session.stage === "born" && session.deadline && Date.now() >= session.deadline) {
+    console.log("grid full: walls up");
+    setStage("grid");
   }
   if (session.stage !== "grid") return;
   const pushing = withGenome().filter((p) => p.socketId).length;

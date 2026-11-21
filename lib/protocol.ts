@@ -6,7 +6,7 @@ import { SNS_QUESTIONS } from "./questions.ts";
 export const STAGES = ["lobby", "input", "born", "grid", "open"] as const;
 export type Stage = (typeof STAGES)[number];
 
-/** A = 30s SNS feed, B = 0–10 dial pad questions. */
+/** A = 45s SNS feed with the betta growing above it, B = 0–10 dial pad questions. */
 export type Mode = "A" | "B";
 
 /**
@@ -66,6 +66,10 @@ export type PlayerView = {
   genome: Genome | null;
   /** Born stage: the visitor pushed their betta from the phone into the tank. */
   released: boolean;
+  /** Grid cell this betta was given on release (index into createGridLayout().slots). Null = arrived late, enters open from an edge. */
+  slot: number | null;
+  /** Open stage: epoch ms when this visitor's time with the joystick ends and their betta card appears. */
+  openUntil: number | null;
   /** Grid stage: taps this player put into their own wall. */
   effort: number;
   question?: PlayerQuestion | null;
@@ -79,6 +83,10 @@ export type SessionState = {
   effort: { total: number; threshold: number };
   /** Epoch ms when the current timed stage auto-advances, or null. */
   deadline: number | null;
+  /** Born stage: epoch ms when placeholder bettas started filling the empty cells, or null. */
+  fillAt: number | null;
+  /** Player count the grid layout is built for: createGridLayout(gridSize). */
+  gridSize: number;
   question?: SharedQuestion | null;
 };
 
@@ -100,7 +108,7 @@ export type ClientToServer = {
   hello: (hello: Hello) => void;
   admin: (command: AdminCommand) => void;
   answer: (answer: { q: number; value: number }) => void;
-  /** `start` clears earlier events (feed restarted after a reload); `done` = the 30s are over. */
+  /** `start` clears earlier events (feed restarted after a reload); `done` = the 45s are over. */
   feed: (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => void;
   effort: (effort: { amount: number }) => void;
   /** Born stage: send my betta from the phone to the screen. */
@@ -115,7 +123,7 @@ export type ServerToClient = {
 };
 
 export const QUESTION_COUNT = SNS_QUESTIONS.length;
-export const FEED_MS = 30_000;
+export const FEED_MS = 45_000;
 
 /** Grid stage: walls break when the room's taps reach players × TAPS_PER_PLAYER, or after GRID_MS. */
 export const GRID_MS = 60_000;
@@ -123,3 +131,15 @@ export const TAPS_PER_PLAYER = 30;
 /** The shared total leaks this many taps per second per player, so everyone has to keep pushing. */
 export const DECAY_PER_PLAYER = 2;
 export const DEFAULT_ROOM = "betta";
+
+/**
+ * Born stage: once every visitor's betta is in, placeholder bettas fade in
+ * with their cubes, front row first and then the rows behind, over FILL_MS.
+ * The full grid then holds for FILL_HOLD_MS before the walls go up.
+ */
+export const FILL_MS = 14_000;
+export const FILL_HOLD_MS = 20_000;
+/** A betta with a genome that hasn't been released after this long is released for the visitor. */
+export const RELEASE_TIMEOUT_MS = 30_000;
+/** Open stage: each visitor steers for this long, then gets their betta card. */
+export const OPEN_MS = 90_000;

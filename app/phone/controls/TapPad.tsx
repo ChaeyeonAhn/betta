@@ -16,7 +16,7 @@ export function TapPad({ state, mine, onTap }: { state: SessionState; mine: numb
   return (
     <main className={styles.root}>
       <WaterBackdrop />
-      <p className={styles.top}>다 함께 두드리면 칸막이가 열려요.</p>
+      <p className={styles.top}>Tap together to open the partitions.</p>
       <button
         className={`${styles.pad} ${pressed ? styles.pressed : ""}`}
         onPointerDown={(e) => {
@@ -29,7 +29,7 @@ export function TapPad({ state, mine, onTap }: { state: SessionState; mine: numb
         onPointerCancel={() => setPressed(false)}
         onPointerLeave={() => setPressed(false)}
       >
-        두드리기
+        Tap
         <span className={styles.count}>{mine}</span>
       </button>
       <div className={styles.bar}>

@@ -9,6 +9,15 @@
   pointer-events: none;
 }
 
+/* The tag fades in with its betta and cube. */
+.arriving {
+  animation: arrive 1600ms ease-in-out both;
+}
+
+@keyframes arrive {
+  from { opacity: 0; }
+}
+
 .fallback {
   display: flex;
   align-items: center;

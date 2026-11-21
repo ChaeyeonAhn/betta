@@ -23,6 +23,8 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
     bettaPattern: { value: style.pattern },
     bettaSeed: { value: style.seed },
     bettaFiller: { value: Number(style.filler) },
+    /** Placeholders: seconds since the grid started filling; each instance fades in after its `fillerDelay`. */
+    bettaElapsed: { value: 1e6 },
   };
   const material = new MeshStandardMaterial({
     roughness: 0.91,
@@ -40,9 +42,14 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         uniform float bettaTime;
         uniform float bettaFin;
         uniform float bettaFinLength;
+        uniform float bettaFiller;
+        uniform float bettaElapsed;
+        attribute float fillerDelay;
+        varying float bettaFade;
       `)
       .replace("#include <begin_vertex>", `#include <begin_vertex>
         bettaUv = uv;
+        bettaFade = bettaFiller > .5 ? clamp((bettaElapsed - fillerDelay) / 1.6, 0., 1.) : 1.;
         // The base of each fin stays attached. A wave rolls toward the rim.
         float radius = bettaUv.y;
         float wave = bettaTime - radius * 4.8 + bettaUv.x * 2.1 + position.x * 2.0;
@@ -65,6 +72,7 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         uniform float bettaPattern;
         uniform float bettaSeed;
         uniform float bettaFiller;
+        varying float bettaFade;
 
         float bettaHash(vec2 p) {
           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -132,6 +140,8 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         }
         diffuseColor.rgb *= mix(paint * (.86+.16*tooth), vec3(.027+.13*tooth), bettaFiller);
         diffuseColor.a *= mix(1., .97-.07*uv.y, bettaFin);
+        if (bettaFade < .01) discard;
+        diffuseColor.a *= bettaFade;
       `)
       .replace("#include <opaque_fragment>", `
         float contour = smoothstep(.06,.30,abs(normal.z));
@@ -141,5 +151,5 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         #include <opaque_fragment>
       `);
   };
-  return { material, time };
+  return { material, time, uniforms };
 }

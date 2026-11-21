@@ -1,10 +1,18 @@
 "use client";
 
-// Grid stage: every betta alone in its own tank.
-// Tapping on the phone pushes against your own wall: cracks spread over your
-// cell. The bar at the bottom is the room's shared push; it leaks over time,
-// so the walls only come down if enough people keep pushing together, or when
-// the clock runs out (server/index.ts decides; this only draws).
+// The partitioned tank, from the first released betta until the walls break.
+//
+// Born (and Mode A's input): the tank starts empty. Each betta fades in with
+// its cube in the random front cell the server gave it as its visitor releases
+// it. Once everyone is in, placeholder bettas fade in with their cubes, front
+// row first and then every row behind, and the full grid holds for a while.
+//
+// Grid: tapping on the phone pushes against your own wall: cracks spread over
+// your cell. The bar at the bottom is the room's shared push; it leaks over
+// time, so the walls only come down if enough people keep pushing together, or
+// when the clock runs out (server/index.ts decides; this only draws).
+//
+// One component for both, so the WebGL tank stays mounted across the change.
 
 import { useEffect, useMemo, useState } from "react";
 import { BettaShape } from "@/app/_components/BettaShape";
@@ -19,18 +27,30 @@ const MAX_CRACKS = 6;
 const FILLER: Genome = { hue: 0, saturation: 0, finLength: 0.65, boundary: 0.5, sociability: 0.4 };
 
 export function Grid({ state }: { state: SessionState }) {
-  const bettas = state.players.flatMap((player) => player.genome ? [{ ...player, genome: player.genome }] : []);
-  const count = bettas.length;
-  const layout = useMemo(() => createGridLayout(count), [count]);
+  const walls = state.stage === "grid";
+  const layout = useMemo(() => createGridLayout(state.gridSize), [state.gridSize]);
   const { slots, side } = layout;
+  const bettas = state.players.flatMap((player) =>
+    player.genome && player.slot !== null && player.slot < slots.length ? [{ ...player, genome: player.genome, slot: player.slot }] : []);
   const now = useNow();
   const left = state.deadline ? Math.max(0, Math.ceil((state.deadline - now) / 1000)) : null;
   const share = state.effort.threshold ? Math.min(1, state.effort.total / state.effort.threshold) : 0;
 
+  const { fillAt: fillStart } = state;
+
+  const round = state.players.filter((p) => p.connected && (p.phase === "input" || p.phase === "caged")).length;
+  const caption = walls || fillStart !== null
+    ? null
+    : state.stage === "input"
+      ? `Your bettas are growing on your phones · ${bettas.length} / ${round}`
+      : `Swipe your betta up from your phone · ${bettas.length} / ${round}`;
+
   return (
     <section className={styles.root}>
       <BettaVisual fallback={slots.map(({ x, y }, i) => {
-        const player = bettas[i];
+        const player = bettas.find((p) => p.slot === i);
+        // Without WebGL, the placeholders simply appear once the fill starts.
+        if (!player && !walls && fillStart === null) return null;
         return (
           <div
             key={i}
@@ -41,24 +61,30 @@ export function Grid({ state }: { state: SessionState }) {
           </div>
         );
       })}>
-        <GridTank players={bettas} layout={layout} />
+        <GridTank players={bettas} layout={layout} fillStart={fillStart} full={walls} arrive={!walls} />
       </BettaVisual>
-      {bettas.map((player, i) => {
-        const { x, y } = slots[i];
+      {bettas.map((player) => {
+        const { x, y } = slots[player.slot];
         return (
-          <div key={player.id} className={styles.cell} style={{ left: x - side / 2, top: y - side / 2, width: side, height: side }}>
-            <Cracks player={player} side={side} />
+          <div key={player.id} className={`${styles.cell} ${walls ? "" : styles.arriving}`} style={{ left: x - side / 2, top: y - side / 2, width: side, height: side }}>
+            {walls && <Cracks player={player} side={side} />}
             <span className={styles.tag}>{shortTag(player.id)}</span>
           </div>
         );
       })}
 
-      <footer className={styles.footer}>
-        <p className={styles.caption}>휴대폰을 함께 두드려 칸막이를 열어주세요{left !== null ? ` · ${left}초` : ""}</p>
-        <div className={styles.bar}>
-          <div className={styles.fill} style={{ transform: `scaleX(${share})` }} />
-        </div>
-      </footer>
+      {walls ? (
+        <footer className={styles.footer}>
+          <p className={styles.caption}>Tap your phones together to open the partitions{left !== null ? ` · ${left}s` : ""}</p>
+          <div className={styles.bar}>
+            <div className={styles.fill} style={{ transform: `scaleX(${share})` }} />
+          </div>
+        </footer>
+      ) : caption && (
+        <footer className={styles.footer}>
+          <p className={styles.caption}>{caption}</p>
+        </footer>
+      )}
     </section>
   );
 }

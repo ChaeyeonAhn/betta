@@ -1,223 +1,244 @@
-# Betta Project — 구현 플랜 v1
+# Betta Project — Implementation Plan v2
 
-> v0 2026-11-18 작성 → v1 같은 날 리뷰 반영. 근거: 피칭 덱(Team3_ChaeyeonAhn_FinalProject.pdf), 노션 「Final Project 아이디어 / 계획」(최신), 「베타 프로젝트」·「정리본」(겹치면 최신 우선).
-> 목표: **11/23까지 전체 흐름 뼈대 데모**. 입장부터 한 어항까지 소켓으로 끝까지 돌아가야 하고, 비주얼은 플레이스홀더로 둔다.
+> v0 written 2026-11-18, v1 revised after review the same day. v2 (2026-11-21) is in English and matches the code. v2.1 (same day): Mode A redesigned around the growing betta, born fills the grid, betta card at the end of open.
+> Sources: pitch deck (Team3_ChaeyeonAhn_FinalProject.pdf), Notion "Final Project idea / plan" (latest), "Betta project" and "Summary" (latest wins where they overlap).
+> Goal: **a skeleton demo of the full flow by 11/23.** Everything from joining to the shared tank must run end to end over sockets. Visuals can stay rough.
 
-## 0. 확정된 결정
+## 0. Decisions
 
-| 항목 | 결정 |
+| Topic | Decision |
 | --- | --- |
-| 베타 생성 입력 | **A/B 두 모드 모두 구현**, 관리자 키로 전환. **(11/19 이름 교체)** A = 30초 가짜 SNS 피드 + 알림 배너, B = 1–10 다이얼패드 5문항 |
-| 칸막이 해제 | **다 같이 힘을 합침**: 전원 입력의 합산이 임계치를 넘으면 붕괴. 제한 시간이 지나면 **자동 해제**로 fallback |
-| 싸움 | **싸움 개념은 쓰지 않음.** 베타 사이 관계는 다가감 / 거리 두기 / 색이 묻어남으로만 표현. Genome의 `aggression` 축은 **`boundary`(경계)**로 교체 |
-| 엔딩 | **끝 없이 계속**. open이 전시 루프가 되고, 늦게 온 관객은 합류하고 떠난 관객의 베타는 흐려짐 (§1-1) |
-| 11/23 범위 | 전체 흐름 뼈대. 인트로 영상·사운드·고퀄 베타는 자리만 잡아둠 |
-| 호스팅 | **(11/19 변경) 클라우드.** Next → Vercel(`betta-sigma.vercel.app`), 소켓 서버 → **EC2 서울**(`3-37-110-43.sslip.io`, Caddy HTTPS). Railway는 KAIST DNS가 `*.up.railway.app`을 못 찾아서 탈락. 이전안(폐기): 로컬 먼저. 노트북 한 대에서 Next + 소켓 서버를 돌리고, 폰은 같은 Wi‑Fi로 접속(`pnpm dev:mobile`). 클라우드(Vercel + Railway)는 데모 뒤로 미룸. 소켓·폰 주소는 런타임 env(`SOCKET_URL`, `PUBLIC_URL`)로만 바꾸면 옮겨갈 수 있게 짠다 (§5) |
+| Betta creation input | **Both modes A and B are built**, switched with an admin key in the lobby. A = 45s: the betta grows from a fry at the top of the phone while the visitor uses a fake SNS app below; every action sends a bubble up that shapes it (§2-3). B = 8 questions answered on a 0–10 dial pad, the whole room on the same question. |
+| Breaking the partitions | **Everyone pushes together.** The room's taps add up; the walls fall when the total crosses a threshold. Falls on its own when the time limit runs out. |
+| Fighting | **No fighting.** Bettas relate only by drifting together or keeping their distance. The genome's `aggression` axis was replaced by **`boundary`**. |
+| Ending | **None for the tank.** `open` is the exhibition loop: late visitors join, and the bettas of visitors who left fade out (§1-1). **Each visitor** steers for 90s, then their phone shows a **betta card** to save or share; their betta stays in the tank. |
+| 11/23 scope | Full flow skeleton. Intro video and sound are left as slots. |
+| Hosting | **Cloud.** Next.js → Vercel (`betta-sigma.vercel.app`), socket server → **EC2 Seoul** (`3-37-110-43.sslip.io`, Caddy HTTPS). Railway was dropped because KAIST DNS can't resolve `*.up.railway.app`. Local dev still works (`pnpm dev`, `dev:mobile`, `dev:tunnel`). Socket and phone URLs come from runtime env (`SOCKET_URL`, `PUBLIC_URL`). |
+| Projection | **Fixed 1920 × 602 stage** (about 3.2 : 1). `Screen.tsx` letterboxes it into the window; a "Projection size" panel adjusts width and height by hand. |
+| Visitor-facing copy | **English.** |
 
-## 1. 경험 흐름 = 상태 머신
+## 1. Experience flow = state machine
 
 ```
-lobby ──▶ input ──▶ born ──▶ grid ──▶ open ⟲ (끝 없음)
- (접속)   (A or B)  (탄생)   (칸막이)  (한 어항)
+lobby ──▶ input ──▶ born ──▶ grid ──▶ open ⟲ (no end)
+ (join)   (A or B)  (birth)  (cages)  (one tank)
 ```
 
-| stage | 메인 화면 (`/screen`) | 폰 (`/phone`) | 다음으로 |
+| stage | Projection (`/screen`) | Phone (`/phone`) | Next |
 | --- | --- | --- | --- |
-| `lobby` | QR, 접속 인원 수, 빈 어항 | "입수 완료" | 관리자 키 |
-| `input` | A: "look at your phone" / B: 지금 문항 | A: 가짜 피드 / B: 다이얼패드 | 전원 완료 or 관리자 키 |
-| `born` | 베타가 하나씩 태어남 | 내 베타 미리보기 | 자동 (연출 끝) |
-| `grid` | 큐브 격자(덱 1번 슬라이드 느낌), 칸마다 베타 1마리, 벽에 금이 감 | 탭/흔들기로 내 벽 밀기, 전체 게이지 | 합산 ≥ 임계치 or 타임아웃 |
-| `open` | 벽이 무너지고 한 어항에서 헤엄침. 비슷하면 무리를 짓고, 경계가 큰 베타는 거리를 둠 | 드래그로 내 베타 조종 | 없음 (관리자 리셋만) |
+| `lobby` | Title, join URL, number of phones in, the cover betta | "You're in the water" | Admin key |
+| `input` | A: the grid; each betta fades in (with its cube) in a random front cell as soon as its visitor releases it. B: the current question, 0/10 scale, answered count | A: growing betta + fake SNS app (45s), then swipe up to release. B: question + dial pad + live preview of my betta | A: everyone in the round released → `born`. B: advances by itself once everyone answered (950ms reveal), last question → `born` |
+| `born` | The grid, empty at first. Each betta fades in with its cube in a random front cell as it is released. Once everyone is in, grey placeholder bettas fade in with their cubes, front row first and then every row behind, over 14s; the full grid holds for 20s | My betta + `#XXXX` tag, swipe up (or button) to release | Auto after the fill + 20s hold. Admin `Space`: start the fill now / skip the hold |
+| `grid` | Same lattice, every cell full; cracks spread over the real bettas' cells with taps; shared gauge at the bottom | Big tap pad, my count, shared bar | Shared total ≥ threshold, or 60s timeout (server decides) |
+| `open` | Partitions fly apart, each betta bursts out of its own cell and swims in one 3D tank | Joystick for 90s, then the betta card (Save / Share) | None (admin reset only) |
 
-### 1-1. 끝없는 open: 들어오고 나가기
+Admin keys on `/screen` (only with `?key=<ADMIN_KEY>` when the server has one): `1`/`2` mode A/B (lobby only), `Space`/`→` next stage or next question, `Shift+Space` skip the questions to `born`, `R` reset, `P` drop disconnected phones, `H` hide HUD.
 
-`open` 한 번으로 회차를 닫지 않으니, 다음 두 경우를 처리해야 한다. **(리뷰에서 추가)**
+### 1-1. Endless open: joining and leaving
 
-- **늦게 온 관객**: 접속하면 혼자 input(현재 모드)을 거쳐 베타가 태어나고, **자기만의 큐브 하나에 갇힌 채 어항에 들어온다.** 혼자 탭해서 벽을 깨고 나온다. 혼자 기준이라 임계치가 낮고 타임아웃도 있다. 격자 장면을 한 마리 단위로 다시 겪는 셈.
-- **떠난 관객**: 연결이 끊긴 지 N분(기본 3분)이 지나면 베타가 천천히 투명해지다 사라진다. 그 사이 재접속하면 복귀.
-- **관리자 리셋**: 시연용. A 한 바퀴 → 리셋 → B 한 바퀴.
+- **Late visitors**: joining after `lobby` puts the phone straight into `input` alone. In B they answer the questions at their own pace; the room keeps going. A betta released before the placeholders start filling still gets a grid cell; later ones have no cell and enter the tank from a side edge in `open` (and get their 90s from then).
+- **Stalls**: a betta that is made but not released within 30s is released by the server, so one idle phone doesn't hold up the fill.
+  - Not built yet: the single cube a late betta should break out of on its own (lower threshold, own timeout).
+- **Leaving**: a phone that disconnects before it has a betta is dropped at once (B keeps dial progress across a reconnect). With a betta, it goes to `fading` in `open` and is removed after 3 minutes. Reconnecting in time brings it back.
+  - Not built yet: the visual fade on the screen.
+- **Admin reset**: for demos. One round of A → reset → one round of B. Reset keeps connected phones and clears what they did.
 
-## 2. 아키텍처
+## 2. Architecture
 
 ```
-[phone × N] ─┐                         ┌─ [screen (projection)]
-             ├── Socket.IO ── server ──┤
-             ┘   (노트북 :4000)          └─ (admin = screen 위 키보드)
-      Next.js도 같은 노트북 (:3000), 같은 Wi‑Fi
-      폰이 노트북에 직접 못 붙는 망이면: pnpm dev:tunnel (Cloudflare quick tunnel)
-      나중에: Next → Vercel, server → Railway (env만 교체)
+ Phones ─┐                                ┌─ Projection screen (/screen)
+ /phone  ├── Socket.IO ── session server ─┤
+         ┘   (EC2 :4000 behind Caddy,     └─ (admin = keyboard on the screen)
+              or the laptop in dev)
+      Next.js on Vercel (or the laptop :3000 in dev)
+      Phones that can't reach the laptop: pnpm dev:tunnel (Cloudflare quick tunnels)
 ```
 
-**서버가 "세션"을 갖고, 스크린이 "물리"를 갖는다.**
+**The server owns the session; the screen owns the physics.**
 
-- **서버 (authoritative)**: stage, mode, 플레이어 목록, 각자의 raw 입력과 genome, effort 합산, 타이머. **genome 계산도 서버에서**(한 곳에서만). 폰이 잠들거나 스크린을 새로고침해도 복구된다.
-- **스크린**: 베타 위치, 무리 짓기, 거리 두기, 색 묻음 시뮬레이션과 렌더링. 서버는 위치를 모르고 조종 입력만 중계한다.
-- **폰**: 입력 장치. `playerId`를 localStorage에 저장해 재접속하면 같은 베타로 돌아온다.
+- **Server (authoritative)**: stage, mode, players, each player's raw input and genome, the shared effort, timers, the shared question index. **Genomes are computed on the server only.** A sleeping phone or a reloaded screen recovers from the next `state`.
+- **Screen**: betta positions, schooling, personal space, water current, rendering. The server doesn't know positions; it only relays steering.
+- **Phone**: input device. `playerId` lives in localStorage, so a reconnect returns to the same betta.
 
-템플릿의 `socket-server.mjs`(join/message 단순 중계)는 이 구조와 맞지 않는다. betta 전용 서버로 교체한다.
+The server runs with Node 24 type stripping (`node server/index.ts`). It imports `lib/protocol.ts`, `lib/genome.ts`, `lib/questions.ts` and `lib/lan.ts` at runtime, so those use `.ts` import paths (`allowImportingTsExtensions`) and only erasable TypeScript (no enums).
 
-### 2-1. `Genome`: 입력 모드와 무관한 공통 타입
+### 2-1. `Genome`: one type for both modes
 
-A와 B 모두 같은 타입을 만든다. `born` 이후 단계는 어느 모드였는지 몰라도 된다. Mode B가 축마다 한 문항이라 **5축**으로 확정한다(v0의 `finSpread`는 `finLength`에서 파생).
+Everything after `input` works the same whichever mode made the genome.
 
 ```ts
 type Genome = {
-  hue: number;          // 0–1  몸 색 (차가움 → 따뜻함)
-  saturation: number;   // 0–1  화려함 = 꾸밈 (selectively bred)
-  finLength: number;    // 0–1  지느러미 = 드러내고 싶은 마음
-  boundary: number;     // 0–1  경계 = 개인 공간 반경 (partitioned tank)
-  sociability: number;  // 0–1  무리 짓는 성향
+  hue: number;          // 0–1 body colour, cool → warm
+  saturation: number;   // 0–1 how ornate = how curated (selectively bred)
+  finLength: number;    // 0–1 fins = wanting to be seen
+  boundary: number;     // 0–1 personal space radius (partitioned tank)
+  sociability: number;  // 0–1 pull toward similar bettas
+  markings?: number;    // 0–1 body and fin pattern          (B only)
+  reactivity?: number;  // 0–1 how quickly the wander turns   (B only)
+  glide?: number;       // 0–1 how wide the idle wander is    (B only)
 };
 ```
 
-### 2-2. Mode B: 5문항 초안 (1 = 전혀, 10 = 매우)
+The three optional axes default to 0.5 where they are read. `genomeDistance` (used for schooling) still looks only at the first five.
 
-| 축 | 질문 (KO) | Question (EN) |
-| --- | --- | --- |
-| `hue` | 오늘 하루, 마음의 온도는 몇 도쯤인가요? | How warm does your day feel right now? |
-| `saturation` | 사진을 올리기 전에 고르고 다듬는 데 얼마나 공을 들이나요? | How much effort goes into choosing and editing before you post? |
-| `finLength` | 사람들이 나를 봐줬으면 하는 마음은 얼마나 큰가요? | How much do you want to be seen by others? |
-| `boundary` | 누군가 내 공간에 불쑥 들어오면, 얼마나 불편한가요? | When someone steps into your space uninvited, how uncomfortable do you feel? |
-| `sociability` | 지금 더 필요한 건 혼자만의 시간인가요, 함께하는 시간인가요? (1 = 혼자) | Right now, do you need time alone or time together? (1 = alone) |
+### 2-2. Mode B: 8 questions, 0–10 (`lib/questions.ts`)
 
-매핑: `(value − 1) / 9`. 문구는 리뷰 대상이다.
+0 = "Not at all", 10 = "Very much". Mapping: `value / 10` (unanswered = 5). The phone shows a live preview that grows more complete with each answer, and after sending says which trait the answer shaped.
 
-### 2-3. Mode A: 30초 알림 폭주 (11/19 v0 구현: `lib/feed.ts`, `app/phone/modes/FakeFeed.tsx`)
+| # | Question | Axis | Shown as |
+| --- | --- | --- | --- |
+| 1 | Do you edit your photos or captions several times before you post? | `saturation` | colour intensity |
+| 2 | Do you often post your everyday life on social media? | `finLength` | tail fin length |
+| 3 | Do you tap on posts about topics you don't usually care about? | `hue` (`0.62 − v × 0.59`) | body colour |
+| 4 | Do you post again in a format that got a good response? | `markings` | body and fin markings |
+| 5 | When a stranger sends you a follow request, do you check their account first? | `boundary` | personal space |
+| 6 | Do you often like or comment on your friends' posts? | `sociability` | pull toward other bettas |
+| 7 | When a notification pops up, do you stop what you're doing to check it? | `reactivity` | quickness of movement |
+| 8 | When you open your feed, do you scroll fast instead of reading each post? | `glide` | swimming range |
 
-- 확정: 가짜 SNS 피드 + 상단 배너, 배너를 탭하면 짧은 카드 + 반응 버튼(Like / Accept·Decline / Reply / Close), 문구는 영어, 앱 이름은 `TBD`, 와이어프레임 스타일.
-- 배너는 30초 동안 24개, 간격이 ~4초 → ~0.7초로 줄어든다. 4초 안에 안 누르면 `ignore`.
-- 태그: `brag` `mood` `friend` `stranger` `self`(나에 대한 알림). 매핑은 `lib/genome.ts`.
+The whole room answers the same question, shown on the projection. When every connected participant has answered, it moves on by itself; the admin can also push it. Wording is up for review.
 
-- 폰 한 화면에 가짜 피드 몇 장이 깔리고, 위에서 알림 배너가 점점 빠르게 쏟아진다(30초).
-- 콘텐츠는 **텍스트 + 색 블록만** 쓴다. 이미지 제작 없이 11/23 안에 끝낼 수 있게.
-- 게시물·알림 종류마다 축 태그를 단다. 예: `자랑`(saturation/finLength), `낯선 사람`(boundary), `친구·DM`(sociability), `무드`(hue).
+### 2-3. Mode A: the betta grows above the feed (`lib/feed.ts`, `app/phone/modes/FakeFeed.tsx`)
 
-| 축 | 관찰하는 행동 |
+Why: in v0 the visitor never saw the betta while playing, so the fish in `born` felt like a result, not something they made. Now they watch their habits shape it.
+
+- **Layout**: the top 38% of the phone is the betta's water; a fry grows into a full betta over **45s** (`BettaModel` `growth`: smaller, shorter fins, paler colour at the start). The bottom is the SNS app (`TBD`), pitch black with white lines, to sit in the same deep ocean.
+- **Bubbles**: every logged event lets a bubble go from where it happened (the touch point; the banner that timed out, fainter and slower; the post that scrolled away) up to the fish. When it arrives, a ring spreads from the fish and that event is added to the phone's preview genome (`genomeFromFeed` on the events that have landed). The server computes the real genome from the same events, so phone and projection end up the same. At 45s the app dims, the last bubbles land (≤2.6s), then the phone sends `done`.
+- **Feed**: a scrolling feed (8 posts × 3, line-drawn pictures; mood posts carry their hue as a coloured horizon). 30 banners over 45s (the 24 notices come round again near the end), gaps shrinking from ~4s to ~1s. A banner not touched within 4s counts as `ignore`. Tapping a banner opens a card with reactions (Like / Accept · Decline / Reply / Close). "+ Post" at the bottom.
+- Then the phone shows the grown betta with "Swipe up to release"; it swims into a random cell on the projection right away.
+- Tags: `brag` `mood` `friend` `stranger` `self`. The phone sends event batches every second.
+
+| Axis | Behaviour observed |
 | --- | --- |
-| `hue` | 머문 게시물들의 무드 색 평균 |
-| `saturation` | `자랑` 게시물 체류시간·좋아요 비율 |
-| `finLength` | 하단 "+ Post" 누름, 나에 대한(`self`) 알림을 열어본 비율 |
-| `boundary` | `낯선 사람`(모르는 계정의 팔로우 요청·DM·태그) 알림을 거절·무시한 비율 |
-| `sociability` | `친구·DM` 알림 반응률 vs 전체 무시율 |
+| `hue` | dwell-weighted average hue of the mood posts |
+| `saturation` | attention to `brag` posts (dwell, likes, taps) vs everything else |
+| `finLength` | opening `self` notifications, pressing "+ Post" |
+| `boundary` | declining or ignoring `stranger` requests vs accepting |
+| `sociability` | answering `friend` notifications vs ignoring everything |
 
-폰은 이벤트 로그를 배치로 서버에 보내고, 서버가 genome을 계산한다.
+### 2-3b. born: filling the grid (`app/phone/Release.tsx`, `app/screen/scenes/Grid.tsx`)
 
-### 2-3b. born 단계 (11/19 v0 구현: `app/_components/BettaShape.tsx`, `app/phone/Release.tsx`, `app/screen/scenes/Born.tsx`)
+- The phone shows my betta (3D preview) and its `#XXXX` tag. Swiping up (or the button) sends it off the top of the phone. The server gives it a **random free front cell** (`slot`) of `createGridLayout(gridSize)` (`lib/gridLayout.ts`, shared with the server).
+- The projection starts as empty water: no cubes, no fish. A released betta **fades in together with its cube** (`GridTank` `VisitorCell`/`FadeIn`, 1.6s).
+- When every connected visitor in the round is in, the server sets `fillAt` and the deadline `fillAt + FILL_MS (14s) + FILL_HOLD_MS (20s)`. Placeholder bettas fade in with their cubes: the empty front cells first, then each row behind (shuffled within a row), slow at first and quickening. ~390 cubes, so their lines are one `LineSegments` and their fish two instanced draws; each carries a delay and the fade runs in the shaders. After the hold the stage moves to `grid` on its own.
+- `Grid.tsx` draws input (A), born and grid with one WebGL tank, so nothing remounts between them. `gridSize` only grows during a round, so cells keep their place.
 
-- 확정: 와이어프레임 도형(SVG), **폰에서 내보내기**, 경계·사교성도 처음부터 보이게, 폰에는 내 베타 미리보기.
-- genome → 모양: hue = 몸·지느러미 색, saturation = 채도, finLength = 꼬리 부채 반지름·등/뒷지느러미 높이, boundary = 몸 둘레 점선 막 크기·진하기, sociability = 꼬리 흔드는 리듬(느리고 무거움 ↔ 빠르고 들뜸).
-- 흐름: born이 되면 폰에 내 베타 + `#XXXX` 태그. 위로 밀면(또는 버튼) 폰 위로 날아가고, 큰 화면 해당 칸에 아래에서 헤엄쳐 들어온다. 안 보낸 칸은 깜빡이는 점.
-- 칸은 이미 격자 배치라 다음 단계(칸막이 큐브)에서 그대로 쓸 수 있다.
+### 2-3c. grid · open
 
-### 2-3c. grid · open 단계 (11/19 v0 구현)
+- **Visual**: the bettas are 3D (`BettaModel`, procedural mesh in `bettaMesh.ts`, UV atlas texture `/betta-uv.webp`, `bettaMaterial.ts`). The water is a shader of moving surfaces and scattered light (`PaintedWater`, `waterSurfaces.ts`; the modelled light shafts were removed 11/21), the same "bottomless ocean" across born, grid and open. The SVG `BettaShape` remains as a fallback without WebGL.
+- **grid** (`Grid.tsx`, `GridTank.tsx`, `GridFillerFish.tsx`, `app/phone/controls/TapPad.tsx`): wide-angle 3D lattice, every cell full (real bettas + placeholders). Each tap cracks my cell. Threshold = bettas × 30 taps; the total leaks 2 taps/s per connected betta; 60s timeout.
+- **open** (`Open.tsx`, `WaterTank.tsx`, `waterCurrent.ts`, `app/phone/controls/Joystick.tsx`): partitions fly apart, each betta bursts out of its own cell into a tank with depth. The joystick (−1…1, ~20Hz) is the strongest force. Late bettas enter from a side edge.
+- **Betta card** (`app/phone/card/`): 90s after a visitor enters `open` (`openUntil`), the joystick is replaced by their card. A hidden canvas renders the betta once (`CardSnapshot`), `composeCard` draws a 1080 × 1350 PNG (black, white lines, the betta, tag, date, trait lines from `traits.ts`). Save downloads it; Share uses the Web Share API with the file (on iOS Save also goes through the share sheet, which has "Save Image"). Same card for A and B.
 
-- **프로젝션은 1920 × 602 고정 스테이지**(약 3.2 : 1). `app/screen/Screen.tsx`가 창 크기에 맞춰 비율 유지로 축소·확대(레터박스)하고, 씬 좌표는 전부 스테이지 px.
-- grid (`app/screen/scenes/Grid.tsx`, `app/phone/controls/TapPad.tsx`): 칸마다 와이어프레임 상자 + 베타. 폰의 큰 원을 탭할 때마다 내 칸에 금이 늘고, 하단 바는 방 전체 합산. 임계치 = 베타 수 × 30탭, 합산은 초당 베타 수 × 2씩 샌다. 넘으면 함께 붕괴, 60초 지나면 자동 붕괴(서버가 판정).
-- open (`app/screen/scenes/Open.tsx`, `app/phone/controls/Joystick.tsx`): 칸막이가 바깥으로 날아가고 베타들이 칸에서 튀어나와 한 어항을 헤엄친다. 폰 조이스틱(-1…1, ~20Hz)이 가장 센 힘이고, 그 외 배회·개인 공간(boundary)·비슷한 genome 끼리 끌림(sociability)·벽. 싸움 없음.
-- 늦게 온 관객은 피드를 마치면 어항 가장자리에서 들어온다(1인 큐브는 아직 없음).
+### 2-4. Behaviour in open (built)
 
-### 2-4. open 행동 규칙
+- Steering: while held, velocity is pulled toward the joystick direction.
+- Wander when not steered; `reactivity` makes it turn more often, `glide` makes it wider.
+- Personal space radius = `70 + boundary × 160` px (3D distance). Others inside it get pushed away, harder for high `boundary`.
+- Schooling: within 480px, bettas with `genomeDistance < 0.7` attract and match velocity, scaled by `sociability`.
+- Soft walls at the stage edges. Each betta keeps a preferred depth. A shared water current, stirred by the swimmers, carries everyone.
+- No fighting, no collisions as drama.
+- Not built yet: **colour bleed** (bettas that stay close slowly tint each other; visual only, genome unchanged).
 
-- 거리 `d = |genomeA − genomeB|` (5차원).
-- `d`가 작으면 무리 짓기(정렬 + 응집, `sociability`가 강도).
-- 베타마다 개인 공간 반경 = `boundary`. 그 안에 다른 베타가 들어오면 천천히 비켜난다. 경계가 큰 베타는 무리 가장자리를 맴돌거나 혼자 떨어져 있게 된다.
-- 싸움·충돌 연출은 없다. 관계는 다가감과 거리 두기의 리듬으로만 보인다.
-- 가까이 오래 머물면 서로의 색이 조금씩 묻어난다(시각 상태만 바꾸고 genome은 그대로). 노션 Overall view의 "물감 묻듯" 아이디어.
-- 플레이어 조종(`steer`)은 이 힘들에 더해지는 힘이라, 완전히 마음대로 움직이지는 않는다.
+### 2-5. Socket protocol (`lib/protocol.ts`)
 
-### 2-5. 소켓 프로토콜 (초안)
-
-| 방향 | 이벤트 | payload |
+| Direction | Event | Payload |
 | --- | --- | --- |
-| phone → server | `hello` | `{ role: "phone", playerId, room }` |
-| phone → server | `answer` (A) | `{ q, value }` |
-| phone → server | `feed` (B) | `{ events: FeedEvent[] }` 배치 |
-| phone → server | `effort` | `{ amount }` |
-| phone → server → screen | `steer` | `{ playerId, x, y }` ~20Hz 스로틀, 서버는 중계만 |
-| screen → server | `hello` | `{ role: "screen", room, adminKey }` |
-| screen → server | `admin` | `{ cmd: "setMode" \| "next" \| "goto" \| "reset", arg? }` |
-| server → all | `state` | `{ stage, mode, players[{id, genome, phase, connected}], effort{total, threshold}, deadline }` |
+| phone → server | `hello` | `{ role: "phone", room, playerId }` |
+| phone → server | `answer` (B) | `{ q, value }` (0–10) |
+| phone → server | `feed` (A) | `{ events: FeedEvent[], start?, done? }` |
+| phone → server | `release` | — |
+| phone → server | `effort` | `{ amount }` (clamped to 0–3) |
+| phone → server → screen | `steer` | `{ x, y }`, relayed with `playerId`; server only relays |
+| screen → server | `hello` | `{ role: "screen", room, adminKey? }` |
+| screen → server | `admin` | `setMode` / `next { question? }` / `goto` / `reset` / `prune` |
+| server → all | `state` | `SessionState`: `{ room, stage, mode, players[], effort{total, threshold}, deadline, fillAt, gridSize, question }` (throttled to 100ms) |
+| server → phone | `rejected` | `{ reason }` (wrong room) |
 
-- `players[].phase`: 늦게 온 관객 때문에 플레이어마다 단계가 다를 수 있다(`input` / `caged` / `free` / `fading`).
-- effort 임계치는 인원에 비례한다(예: `인원 × 30탭`). 합산값은 시간이 지나면 줄어들어서 다 같이 계속 밀어야 깨진다.
+- `players[]`: `{ id, connected, phase, done, genome, released, slot, openUntil, effort }`. A phone's own entry also carries `question` (index, answered, live preview genome).
+- `SessionState` also has `fillAt` (born: when the placeholders started) and `gridSize` (the player count the grid layout is built for).
+- `phase`: `waiting` / `input` / `caged` / `free` / `fading`. Players can be in different phases because of late joiners.
 
-## 3. 파일 구조 (예정)
+## 3. Files
 
 ```
 app/
-  page.tsx                 랜딩 (QR → /phone?room=…)
-  screen/page.tsx          프로젝션. R3F Canvas + stage별 씬, 관리자 키
-  screen/scenes/           Lobby / Input / Born / Grid / Open
-  phone/page.tsx           phase별 폰 UI 스위치
-  phone/modes/             DialPad (A) / FakeFeed (B)
-  phone/controls/          EffortPad / Joystick
+  page.tsx                   landing: just the links to /phone and /screen over the water
+  _components/               BettaShape (SVG fallback), ExhibitionBetta (cover), PaintedWater + water shaders
+  screen/
+    page.tsx  Screen.tsx     projection, admin keys, lobby/question overlay
+    ProjectionControls.tsx   projection size calibration
+    scenes/                  Grid (input A + born + grid; + GridTank, GridFillerFish), Open (+ WaterTank),
+                             BettaCanvas, BettaModel, bettaMesh, bettaMaterial,
+                             gridLayout, waterCurrent, swimmingPitch
+  phone/
+    page.tsx  Phone.tsx      phone UI switch by stage/phase
+    BettaPreview(.Scene)     3D preview of my betta
+    Release.tsx              born: swipe up to release
+    modes/                   FakeFeed (A), QuestionDial (B)
+    controls/                TapPad (grid), Joystick (open)
+    card/                    BettaCard, CardSnapshot, composeCard, traits (end of open)
 lib/
-  protocol.ts              이벤트·State 타입 (서버·클라 공유)
-  genome.ts                A/B → Genome, 거리 함수 (서버에서 실행)
-  questions.ts             Mode B 문항
-  feed.ts                  Mode A 게시물·알림 데이터
-  betta/                   절차적 베타 메쉬·지느러미 셰이더 (플레이스홀더)
-hooks/
-  useBetta.ts              소켓 연결 + state 구독 + send
+  protocol.ts                events and state types (server + pages)
+  genome.ts                  A/B → Genome, distance (runs on the server)
+  questions.ts               Mode B questions
+  feed.ts                    Mode A posts and notifications
+  gridLayout.ts              stage size + grid cells (screen and server)
+  playerId.ts  lan.ts
+hooks/useBetta.ts            socket connect + state subscription
 server/
-  index.ts                 Socket.IO 서버, 세션 상태 머신
+  index.ts                   Socket.IO session server, stage machine
+  ec2/setup.sh               one-time EC2 setup
 scripts/
-  bots.ts                  가짜 폰 N개 (혼자 20명 테스트용)
+  deploy-server.sh           pnpm deploy:server
+  dev-tunnel.mjs             pnpm dev:tunnel
 ```
 
-서버는 Node 24의 TS 타입 스트리핑으로 `node server/index.ts` 바로 실행한다. 서버가 `lib/genome.ts`를 **런타임에** import하므로, import 경로에 `.ts` 확장자를 붙이고 `tsconfig`에 `allowImportingTsExtensions: true`를 추가한다(`noEmit`이라 허용됨). enum 같은 비-erasable 문법은 쓰지 않는다. **(리뷰에서 추가)**
+Not created yet: `scripts/bots.ts` (N fake phones for a 15–20 person test alone).
 
-## 4. 일정 (11/18 → 11/23)
+## 4. Schedule (11/18 → 11/23)
 
-11/18은 이미 거의 끝났으니 실질적으로 4.5일이다. 첫 칸이 제일 무겁다.
-
-| 날짜 | 할 일 | 끝났다는 기준 |
+| Date | Work | Status |
 | --- | --- | --- |
-| 11/19 | `protocol.ts`, `server/index.ts` 상태 머신, `pnpm dev`/`dev:mobile` 스크립트를 새 서버로 교체, room 코드 | 같은 Wi‑Fi의 실제 폰으로 `https://<노트북 IP>:3000/phone`을 열면 `/screen`에 접속 인원이 뜸 |
-| 11/20 | lobby·QR, Mode B 다이얼패드 5문항, `genome.ts`, born 씬 (색·지느러미 길이만 다른 플레이스홀더 베타) | 폰 2대가 B로 답하면 서로 다른 베타 2마리 탄생 |
-| 11/21 | ~~Mode A 30초 알림 폭주 v0 → genome~~ (11/19 완료), A/B 키 전환 | 두 모드 모두 같은 지점까지 도달 |
-| 11/22 | grid 씬 + effort 합산·게이지·타임아웃, open 씬 조종 + 무리 짓기 + 거리 두기, 늦게 온 관객 1인 큐브 | 벽 붕괴 → 한 어항에서 폰으로 조종, 중간에 1명 추가 합류 |
-| 11/23 | `bots.ts`로 15–20명 테스트, iOS·Android 실기기, 이탈 → 흐려짐, 리셋 반복 | A 한 바퀴 + B 한 바퀴를 끊김 없이 시연 |
+| 11/19 | protocol, server stage machine, room code, dev scripts; Mode A v0; born; grid + open v0; Vercel + EC2 deploy | Done |
+| 11/20 | Mode B dial pad, 3D wide-angle grid, phone preview matching the screen betta | Done |
+| 11/21 | 3D bettas in all stages, shader water, English copy, plan v2; Mode A redesign (growing betta, bubbles), random cells + placeholder fill, betta card | Done |
+| 11/22 | Real-device check of Mode A and the card (iOS share sheet), late-joiner single cube, fade-out on leave | Next |
+| 11/23 | `bots.ts` with 15–20 phones, real iOS and Android devices, leave → fade, repeated resets | Demo: one round of A + one round of B without breaks |
 
-밀리면 이 순서로 덜어낸다: 색 묻음 → 흔들기(탭만 남김) → 늦게 온 관객 1인 큐브(대신 lobby에서만 접속 허용) → B 피드 축 개수.
+If time runs short, drop in this order: colour bleed → late-joiner single cube (join only in the lobby instead) → number of axes Mode A covers.
 
-## 5. 리스크 / 알아둘 것
+## 5. Risks / notes
 
-- **로컬 단계에서 알아둘 것**
-  - **자체서명 인증서 경고**: `dev:mobile`은 HTTPS라서 폰마다 `:3000`과 `:4000`을 한 번씩 열어 경고를 통과해야 한다. 혼자·친구 몇 명 테스트에는 괜찮고, 관객용으로는 불편하다. 이게 클라우드로 옮기는 주된 이유.
-  - **학교 Wi‑Fi는 기기 간 통신을 막는다**(AP isolation, 11/18 확인). **아이폰 핫스팟도 안 된다**: IPv6 전용 망이라 노트북이 가짜 IPv4 `192.0.0.2`(clat46)를 받고, 폰이 그 주소로 붙을 수 없다.
-  - 그래서 테스트는 **`pnpm dev:tunnel`**: Cloudflare quick tunnel 두 개(페이지·소켓)로 정식 https 주소를 받는다. 노트북·폰이 아무 망에나 인터넷만 되면 붙고, 인증서 경고도 없다. 주소는 실행할 때마다 바뀌고 계정·업타임 보장은 없다. 아는 사람은 누구나 열 수 있으니 테스트 때만 켠다.
-  - 같은 망에서 직접 붙어야 하면 안드로이드 핫스팟이나 휴대용 공유기(평범한 `192.168.x.x`).
-  - HTTPS가 필요한 기능(흔들기)은 `dev:mobile`이나 `dev:tunnel`에서만 테스트된다. `pnpm dev`(http)에서는 탭만.
-- **나중에 클라우드로 옮길 때**
-  - **Vercel은 Socket.IO 서버를 돌릴 수 없다** (서버리스라 상시 연결이 안 됨). 소켓은 별도 서버에 둔다.
-  - **Railway**: 잠들지 않고, 사용량만큼 소액 과금. 기본안. 계정 로그인·결제 연결이 필요하다.
-  - Render 무료: 15분 동안 접속이 없으면 잠들어서 첫 접속에 ~1분 걸린다. 전시용으로는 부적합.
-  - 서버 CORS는 Vercel 도메인만 허용한다.
-- **room 코드·adminKey**: 로컬에서는 사실상 필요 없지만 프로토콜에는 처음부터 넣어둔다. 클라우드로 공개 URL이 되면 QR의 `room`이 다른 접속은 거부하고, 관리자 명령은 `adminKey`(env)로 막는다.
-- **iOS 흔들기**: `DeviceMotionEvent.requestPermission()`을 사용자 탭 안에서 호출해야 한다. 거부될 수 있으니 탭이 기본, 흔들기는 덤.
-- **햅틱**: `navigator.vibrate`는 Android Chrome만 지원하고 iOS Safari는 미지원. 되면 좋은 기능으로 둔다.
-- **동시 접속 폭주**: `state` 브로드캐스트는 변경이 있을 때만, 그리고 스로틀을 건다.
-- **서버 재배포 = 세션 초기화**: 메모리에만 두니 전시 중에는 재배포하지 않는다. 필요해지면 그때 영속화.
-- **Next 16.4.3 보안 경고**: 배포 전에 패치 버전을 확인한다.
+- **Networks**
+  - Campus Wi‑Fi blocks device-to-device traffic (AP isolation, confirmed 11/18). An iPhone hotspot doesn't work either (IPv6-only; the laptop gets a fake IPv4 `192.0.0.2` via clat46).
+  - With the cloud deploy, phones only need internet. For local tests: `pnpm dev:tunnel` (two Cloudflare quick tunnels, new URLs every run, open to anyone who knows them), or an Android hotspot / travel router.
+  - `dev:mobile` uses a self-signed cert: each phone has to open `:3000` and `:4000` once and pass the warning.
+- **Server redeploy = session reset.** State is in memory only; don't redeploy during the exhibition.
+- **Room code and admin key**: the server rejects other rooms; admin commands need `ADMIN_KEY` (`/screen?key=…`). Without it the screen is read-only. CORS allows only `ALLOWED_ORIGINS` (the Vercel URL).
+- **Load**: `state` is broadcast at most every 100ms. Each 3D betta is its own mesh; check frame rate on the projection machine with 20+ bettas.
+- **iOS shake** would need `DeviceMotionEvent.requestPermission()` inside a tap, and HTTPS. Tapping is the default; shaking isn't built.
+- **Haptics**: `navigator.vibrate` works on Android Chrome only.
+- **Next 16.4.3 security notice**: check for a patch release before the exhibition.
 
-## 6. 데모 이후 백로그
+## 6. Backlog after the demo
 
-- 인트로 영상 (기존 영상 1을 AI로 폴리싱)
-- 사운드: Tone.js 앰비언스(낮고 웅웅, 중립) + 버블 샘플 PitchShift/Distortion, genome별로 다르게
-- 베타 비주얼: 지느러미 셰이더 고도화 / Blender glTF / Procreate 텍스처 중 택1
-- 물(space)의 영향: 굴절·물결, 공간이 베타 행동을 바꾸는 규칙
-- 라비린스 기관: 수면 위로 숨 쉬러 올라가는 행동 = "네트워크 밖으로 나가기"
-- 누적 데이터: "오늘 이 어항에는 이런 베타 n%" (엔딩은 없지만 화면 구석 상시 표시 정도로)
-- 프로젝션 매핑 (ID412 W3 실험 참고)
+- Intro video (polish the existing video 1 with AI)
+- Sound: Tone.js ambience (low hum, neutral) + bubble samples with PitchShift/Distortion, different per genome
+- Water affecting behaviour: rules where the space changes how bettas move
+- Labyrinth organ: rising to the surface to breathe = "stepping off the network"
+- Running totals: "today this tank holds n% of this kind of betta" (no ending, a quiet corner display)
+- QR code in the lobby (now a text URL)
+- Projection mapping (see ID412 W3 experiment)
 
-## 7. 남은 결정
+## 7. Open decisions
 
-- [ ] Mode B 문항 문구 다듬기 (§2-2 초안)
-- [ ] Mode A 게시물·알림 문구 다듬기 (`lib/feed.ts` 초안), 앱 이름 정하기 (지금 `TBD`)
-- [ ] effort 임계치, 타임아웃, 이탈 후 사라지는 시간: 11/22에 실제로 해보고 숫자 확정
-- [ ] 전시 일정, 프로젝터 해상도·비율, 예상 최대 인원
-- [x] 데모 장소 Wi‑Fi에서 폰 → 노트북 직접 접속: 안 됨 → `dev:tunnel`로 우회
-- [ ] 전시 당일 연결: 터널(인터넷 의존) vs 공유기 vs 클라우드
-- [ ] 클라우드 이전 시점: 데모(11/23) 뒤, 전시 전 언제쯤
-- [ ] Railway 계정 준비 (클라우드 이전 전에)
+- [x] **Mode A redesign**: the betta grows above the feed; bubbles carry each action to it (§2-3)
+- [ ] Mode B question wording (§2-2)
+- [ ] Mode A copy and the app name (now `TBD`); whether 30 banners over 45s feels right
+- [ ] Card wording (`app/phone/card/traits.ts`) and whether the 90s in open is the right length
+- [ ] Effort threshold, timeout, fade time: settle by running it with real people
+- [ ] Exhibition date, projector resolution and aspect, expected maximum visitors
+- [ ] Connection on the exhibition day: cloud (current) vs local router fallback
+- [x] Phone → laptop on the demo Wi‑Fi: doesn't work → cloud deploy / `dev:tunnel`
+- [x] Cloud move: done 11/19 (Vercel + EC2)

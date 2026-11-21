@@ -8,12 +8,13 @@ const PreviewScene = dynamic(() => import("./BettaPreviewScene").then((module) =
   ssr: false,
 });
 
-export function BettaPreview({ genome, playerId, tag, width, overscan = 1 }: {
+export function BettaPreview({ genome, playerId, tag, width, overscan = 1, growth }: {
   genome: Genome;
   playerId: string;
   tag?: string;
   width: number;
   overscan?: number;
+  growth?: number;
 }) {
   return (
     <figure className={styles.preview} style={{ width }}>
@@ -22,7 +23,7 @@ export function BettaPreview({ genome, playerId, tag, width, overscan = 1 }: {
           width: `${overscan * 100}%`, height: `${overscan * 100}%`,
           left: `${(1 - overscan) * 50}%`, top: `${(1 - overscan) * 50}%`,
         }}>
-          <PreviewScene genome={genome} playerId={playerId} width={width} viewHeight={182 * overscan} />
+          <PreviewScene genome={genome} playerId={playerId} width={width} viewHeight={182 * overscan} growth={growth} />
         </div>
       </div>
       {tag && <figcaption className={styles.label}>{tag}</figcaption>}

@@ -6,7 +6,6 @@ import { Vector2, type ShaderMaterial } from "three";
 import { BettaVisual } from "@/app/screen/scenes/BettaCanvas";
 import type { WaterCurrent } from "@/app/screen/scenes/waterCurrent";
 import { waterSurfaces } from "./waterSurfaces";
-import { waterLight } from "./waterLight";
 
 const vertex = /* glsl */ `
   varying vec2 waterUv;
@@ -25,14 +24,12 @@ const fragment = /* glsl */ `
   varying vec2 waterUv;
 
   ${waterSurfaces}
-  ${waterLight}
 
   void main() {
     // Portrait phones see the lit right-hand section of the same environment.
     vec2 viewUv = vec2(.84, .5) + (waterUv - vec2(.84, .5)) * vec2(horizontalView, 1.);
     vec3 ray = normalize(vec3((viewUv - .5) * vec2(2.7, 1.24), -1.));
     vec3 water = waterInk(ray, waterTime, waterFlow, waterTravel, deepWater);
-    water += waterScattering(ray, waterTime, waterFlow, waterTravel, deepWater);
     gl_FragColor = vec4(water, 1.);
   }
 `;

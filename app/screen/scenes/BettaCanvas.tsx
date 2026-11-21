@@ -17,6 +17,7 @@ export function BettaCanvas({
   viewHeight = STAGE_H,
   dpr = 1,
   background = "#000",
+  gl,
 }: {
   children: ReactNode;
   scenery?: ReactNode;
@@ -24,12 +25,15 @@ export function BettaCanvas({
   viewHeight?: number;
   dpr?: number | [number, number];
   background?: string | null;
+  /** Renderer options, e.g. preserveDrawingBuffer to read the picture back. */
+  gl?: { preserveDrawingBuffer?: boolean; alpha?: boolean };
 }) {
   const fov = 2 * Math.atan(viewHeight / (2 * distance)) * 180 / Math.PI;
   return (
     <Canvas
       aria-hidden
       dpr={dpr}
+      gl={gl}
       style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
       resize={{ offsetSize: true }}
       camera={{ position: [0, 0, distance], fov, near: 10, far: 6400 }}

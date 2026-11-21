@@ -2,7 +2,7 @@
 
 import { useFrame, useLoader } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { type Group, MeshStandardMaterial, SRGBColorSpace, TextureLoader } from "three";
+import { type Group, MathUtils, MeshStandardMaterial, SRGBColorSpace, TextureLoader } from "three";
 import type { Genome } from "@/lib/protocol";
 import { createBettaMaterial } from "./bettaMaterial";
 import { BODY_REST_PITCH, body, eyeball, fins, pairedFins } from "./bettaMesh";
@@ -26,13 +26,20 @@ export function useBettaAtlas() {
   return atlas;
 }
 
-export function BettaModel({ genome, seed, size, followHeading = false }: {
+/**
+ * `growth` (0–1, Mode A's phone): a fry grows into the full fish. Smaller,
+ * shorter fins, paler colour. Eases toward the value it is given.
+ */
+export function BettaModel({ genome, seed, size, followHeading = false, growth }: {
   genome: Genome;
   seed: string;
   size: number;
   followHeading?: boolean;
+  growth?: number;
 }) {
   const fish = useRef<Group>(null);
+  const scaled = useRef<Group>(null);
+  const grown = useRef(growth ?? 1);
   const atlas = useBettaAtlas();
   const id = useMemo(() => {
     let hash = 2166136261;
@@ -43,6 +50,12 @@ export function BettaModel({ genome, seed, size, followHeading = false }: {
   const pattern = markings === undefined ? id % 3 : (id + Math.min(2, Math.floor(markings * 3))) % 3;
   const phase = (id % 101) / 16;
   const swim = SWIMS[(id >>> 8) % SWIMS.length];
+  // Each fish owns its eye materials, so one fish can fade without the others.
+  const [eyeMaterial, eyeRimMaterial] = useMemo(() => [eye.clone(), eyeRim.clone()], []);
+  useEffect(() => () => {
+    eyeMaterial.dispose();
+    eyeRimMaterial.dispose();
+  }, [eyeMaterial, eyeRimMaterial]);
   const [skin, membrane] = useMemo(() => {
     const style = { hue, saturation, finLength, pattern, markings, seed: id / 0xffffffff, filler: false };
     return [createBettaMaterial(atlas, style, false), createBettaMaterial(atlas, style, true)];
@@ -53,8 +66,16 @@ export function BettaModel({ genome, seed, size, followHeading = false }: {
     membrane.material.dispose();
   }, [skin, membrane]);
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, delta) => {
     if (!fish.current) return;
+    if (growth !== undefined && scaled.current) {
+      const g = grown.current = MathUtils.damp(grown.current, growth, 2.5, delta);
+      scaled.current.scale.setScalar(size * (0.35 + 0.65 * g));
+      for (const { uniforms } of [skin, membrane]) {
+        uniforms.bettaFinLength.value = 0.72 + finLength * 0.4 * g;
+        uniforms.bettaStrength.value = (0.44 + saturation * 0.43) * (markings === undefined ? 1 : 0.68 + markings * 0.60) * (0.25 + 0.75 * g);
+      }
+    }
     const time = clock.elapsedTime;
     const drift = time * swim.drift * (0.65 + glide * 0.7) + phase;
     const stroke = time * (2.4 + sociability * 4.2) * swim.pulse * (0.68 + reactivity * 0.64) + phase;
@@ -81,15 +102,15 @@ export function BettaModel({ genome, seed, size, followHeading = false }: {
   });
 
   return (
-    <group scale={size}>
+    <group ref={scaled} scale={size}>
       <group ref={fish} position-x={0.24}>
         <mesh geometry={body} material={skin.material} />
         {fins.map((geometry, i) => <mesh key={geometry.id} geometry={geometry} material={membrane.material} renderOrder={i + 1} />)}
         {[-1, 1].map((side) => (
           <group key={side}>
-            <mesh geometry={eyeball} material={eyeRim}
+            <mesh geometry={eyeball} material={eyeRimMaterial}
               position={[0.352, 0.072, side * 0.035]} scale={[0.031, 0.031, 0.017]} />
-            <mesh geometry={eyeball} material={eye}
+            <mesh geometry={eyeball} material={eyeMaterial}
               position={[0.356, 0.074, side * 0.046]} scale={[0.022, 0.022, 0.011]} />
             {pairedFins.map((geometry, i) => (
               <mesh key={geometry.id} geometry={geometry} material={membrane.material} renderOrder={i + 4}

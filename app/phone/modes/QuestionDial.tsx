@@ -31,7 +31,7 @@ export function QuestionDial({ question, playerId, onAnswer }: {
           <BettaPreview genome={question.preview} playerId={playerId} tag={shortTag(playerId)} width={240} />
         </div>
         <p className={styles.feedback} aria-live="polite">
-          {question.answered ? `${item.effect}에 답변이 반영됐어요.` : "숫자를 누른 뒤 전송해 주세요."}
+          {question.answered ? `Your answer shaped its ${item.effect}.` : "Pick a number, then press Send."}
         </p>
       </div>
       <DialPad key={question.index} answered={question.answered} onSend={(value) => onAnswer(question.index, value)} />
@@ -49,14 +49,14 @@ function DialPad({ answered, onSend }: { answered: boolean; onSend: (value: numb
       event.preventDefault();
       if (!answered && digits !== "") onSend(Number(digits));
     }}>
-      <output className={styles.value} aria-live="polite">{answered ? "전송 완료" : digits || "—"}</output>
+      <output className={styles.value} aria-live="polite">{answered ? "Sent" : digits || "—"}</output>
       <div className={styles.keys}>
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
           <button key={digit} type="button" disabled={answered} onClick={() => press(digit)}>{digit}</button>
         ))}
-        <button type="button" className={styles.action} disabled={answered || digits === ""} onClick={() => setDigits("")}>지우기</button>
+        <button type="button" className={styles.action} disabled={answered || digits === ""} onClick={() => setDigits("")}>Clear</button>
         <button type="button" disabled={answered} onClick={() => press(0)}>0</button>
-        <button type="submit" className={styles.send} disabled={answered || digits === ""}>전송</button>
+        <button type="submit" className={styles.send} disabled={answered || digits === ""}>Send</button>
       </div>
     </form>
   );

@@ -32,14 +32,14 @@ export function useProjectionScale() {
 export function ProjectionControls({ scale, update }: ReturnType<typeof useProjectionScale>) {
   return (
     <details className={styles.calibration}>
-      <summary>프로젝션 크기</summary>
+      <summary>Projection size</summary>
       <div className={styles.calibrationBody}>
         <label>
-          가로 <output>{Math.round(STAGE_W * scale.x / 100)} px</output>
+          Width <output>{Math.round(STAGE_W * scale.x / 100)} px</output>
           <input type="range" min={MIN_SCALE} max={MAX_SCALE} value={scale.x} onChange={(event) => update(Number(event.target.value), scale.y)} />
         </label>
         <label>
-          세로 <output>{Math.round(STAGE_H * scale.y / 100)} px</output>
+          Height <output>{Math.round(STAGE_H * scale.y / 100)} px</output>
           <input type="range" min={MIN_SCALE} max={MAX_SCALE} value={scale.y} onChange={(event) => update(scale.x, Number(event.target.value))} />
         </label>
         <div className={styles.calibrationActions}>
@@ -47,7 +47,7 @@ export function ProjectionControls({ scale, update }: ReturnType<typeof useProje
           <button type="button" onClick={() => {
             const fit = 100 * Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
             update(Math.floor(fit), Math.floor(fit));
-          }}>창에 맞추기</button>
+          }}>Fit to window</button>
         </div>
       </div>
     </details>

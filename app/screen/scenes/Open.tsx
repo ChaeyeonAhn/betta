@@ -39,9 +39,16 @@ type Fish = {
   wander: number; dir: 1 | -1; genome: Genome;
 };
 
-export function Open({ players, socket }: { players: PlayerView[]; socket: RefObject<BettaSocket | null> }) {
+export function Open({ players, gridSize, socket }: {
+  players: PlayerView[];
+  gridSize: number;
+  socket: RefObject<BettaSocket | null>;
+}) {
   const bettas = players.filter((p) => p.genome);
-  const [opening] = useState(() => ({ ...createGridLayout(bettas.length), occupied: bettas.length }));
+  const [opening] = useState(() => ({
+    ...createGridLayout(gridSize),
+    occupied: new Set(bettas.flatMap((p) => p.slot === null ? [] : [p.slot])),
+  }));
   const fish = useRef(new Map<string, Fish>());
   const els = useRef(new Map<string, HTMLDivElement>());
   const flips = useRef(new Map<string, HTMLDivElement>());
@@ -51,9 +58,9 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
   // Keep the sim in step with who has a betta. New fish start in their grid
   // cell and burst outwards (the walls just came down); late fish enter from an edge.
   const firstFrame = fish.current.size === 0;
-  bettas.forEach((p, i) => {
+  bettas.forEach((p) => {
     if (fish.current.has(p.id)) return;
-    const start = opening.slots[i];
+    const start = p.slot === null ? undefined : opening.slots[p.slot];
     const c = firstFrame && start
       ? projectedFishCenter(start, opening.side)
       : { x: Math.random() < 0.5 ? -FISH : STAGE_W + FISH, y: STAGE_H * (0.2 + Math.random() * 0.6) };
@@ -177,7 +184,7 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
             className={styles.wall}
             style={{
               left: c.x - side / 2, top: c.y - side / 2, width: side, height: side,
-              borderColor: i < opening.occupied ? "#f5f5f3" : "#626262",
+              borderColor: opening.occupied.has(i) ? "#f5f5f3" : "#626262",
               "--dx": `${dx}px`, "--dy": `${dy}px`,
             } as React.CSSProperties}
           />
@@ -207,7 +214,7 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
         </div>
       ))}
 
-      <p className={styles.caption}>휴대폰으로 나의 베타를 이끌어 주세요</p>
+      <p className={styles.caption}>Guide your betta with your phone</p>
     </section>
   );
 }

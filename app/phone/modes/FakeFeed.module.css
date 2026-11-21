@@ -1,10 +1,14 @@
-/* A light paper feed inside the dark water exhibition. */
+/* Mode A: the betta's water on top, a pitch-black SNS app in white lines below. */
 
 .root {
+  --tank-h: 38dvh;
+  --line: rgb(255 255 255 / 86%);
+  --faint-line: rgb(255 255 255 / 24%);
+  --dim: rgb(255 255 255 / 56%);
   position: fixed;
   inset: 0;
-  background: #f5edde;
-  color: #241f30;
+  background: #000;
+  color: #f4f4f4;
   font-family: var(--font-sans);
   font-size: 15px;
   text-align: left;
@@ -20,15 +24,94 @@
   cursor: pointer;
 }
 
-.progress {
+/* The water */
+
+.tank {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 3;
-  height: 2px;
-  background: #241f30;
+  height: var(--tank-h);
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  background: var(--water-paper);
+  overflow: hidden;
+}
+
+.fish {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding-top: env(safe-area-inset-top);
+}
+
+/* A ring spreads from the fish each time a bubble reaches it. */
+.ripple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: ripple 900ms ease-out both;
+}
+
+@keyframes ripple {
+  from {
+    transform: scale(0.3);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.tankNote {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  right: 0;
+  margin: 0;
+  color: var(--silver);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+/* Time left, on the line between the water and the app. */
+.progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: #fff;
   transform-origin: left;
+  transition: transform 250ms linear;
+}
+
+/* The app */
+
+.app {
+  position: absolute;
+  top: var(--tank-h);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  background: #000;
+  transition: opacity 600ms ease;
+}
+
+.closed {
+  pointer-events: none;
+  opacity: 0.35;
 }
 
 .header {
@@ -39,16 +122,89 @@
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 52px;
+  height: 44px;
   padding: 0 16px;
-  background: #f5edde;
-  border-bottom: 1px solid #241f30;
+  background: #000;
+  border-bottom: 1px solid var(--line);
 }
 
-.app {
-  font-weight: 700;
+.appName {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+}
+
+.feed {
+  position: absolute;
+  top: 44px;
+  bottom: calc(53px + env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.post {
+  padding: 12px 16px 16px;
+  border-bottom: 1px solid var(--faint-line);
+}
+
+.author {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
   letter-spacing: 0.04em;
+}
+
+/* A photo drawn in lines: frame, a horizon, a sun. Mood posts carry their colour on the horizon. */
+.image,
+.cardImage {
+  position: relative;
+  border: 1px solid var(--line);
+}
+
+.image {
+  aspect-ratio: 4 / 3;
+}
+
+.cardImage {
+  height: 120px;
+}
+
+.image::before,
+.cardImage::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 64%;
+  border-top: 1px solid var(--mood, var(--faint-line));
+}
+
+.image::after,
+.cardImage::after {
+  content: "";
+  position: absolute;
+  top: 26%;
+  right: 22%;
+  width: 18%;
+  aspect-ratio: 1;
+  border: 1px solid var(--faint-line);
+  border-radius: 50%;
+}
+
+.postFoot {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-top: 10px;
+  color: var(--dim);
+}
+
+.root .like {
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
 }
 
 .footer {
@@ -60,53 +216,15 @@
   display: flex;
   justify-content: center;
   padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
-  background: #f5edde;
-  border-top: 1px solid #241f30;
+  background: #000;
+  border-top: 1px solid var(--line);
 }
 
 .root .postButton {
-  padding: 8px 28px;
-  border: 1px solid #241f30;
+  padding: 7px 28px;
+  border: 1px solid var(--line);
   border-radius: 6px;
   font-size: 14px;
-}
-
-.feed {
-  position: absolute;
-  top: 52px;
-  bottom: calc(57px + env(safe-area-inset-bottom));
-  left: 0;
-  right: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.post {
-  padding: 12px 16px 16px;
-  border-bottom: 1px solid #cbbcaf;
-}
-
-.author {
-  margin: 0 0 8px;
-  font-weight: 600;
-}
-
-.image {
-  aspect-ratio: 1;
-  border: 1px solid #241f30;
-}
-
-.postFoot {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  margin-top: 10px;
-  color: #514350;
-}
-
-.root .like {
-  font-size: 20px;
-  line-height: 1;
 }
 
 /* Banners */
@@ -126,10 +244,9 @@
 .banner {
   display: flex;
   align-items: stretch;
-  background: #f5edde;
-  border: 1px solid #241f30;
+  background: #000;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   pointer-events: auto;
   animation: drop 180ms ease-out;
 }
@@ -151,24 +268,25 @@
 }
 
 .bannerApp {
-  color: #65546b;
-  font-size: 11px;
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
 }
 
 .root .bannerClose {
   width: 40px;
-  border-left: 1px solid #cbbcaf;
-  color: #65546b;
+  border-left: 1px solid var(--faint-line);
+  color: var(--dim);
   font-size: 18px;
 }
 
 .more {
   align-self: center;
   padding: 2px 8px;
-  background: #241f30;
-  color: #f5edde;
+  border: 1px solid var(--line);
+  background: #000;
   border-radius: 10px;
   font-size: 11px;
 }
@@ -178,35 +296,31 @@
 .scrim {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 3;
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: rgb(20 20 37 / 64%);
+  padding: 20px;
+  background: rgb(0 0 0 / 72%);
 }
 
 .card {
   width: 100%;
   max-width: 320px;
   padding: 16px;
-  background: #f5edde;
-  border: 1px solid #241f30;
+  background: #000;
+  border: 1px solid var(--line);
   border-radius: 12px;
 }
 
 .cardTitle {
   margin: 0 0 10px;
-  font-weight: 600;
-}
-
-.cardImage {
-  height: 140px;
-  border: 1px solid #241f30;
+  font-family: var(--font-mono);
+  font-size: 13px;
 }
 
 .cardBody {
   margin: 10px 0 0;
-  color: #514350;
+  color: var(--dim);
 }
 
 .cardActions {
@@ -219,16 +333,48 @@
 .root .actionGhost {
   flex: 1;
   padding: 10px 0;
-  border: 1px solid #241f30;
+  border: 1px solid var(--line);
   border-radius: 6px;
   text-align: center;
 }
 
 .root .action {
-  background: #241f30;
-  color: #f5edde;
+  background: #fff;
+  color: #000;
 }
 
 .root .actionGhost {
-  color: #555;
+  color: var(--dim);
+}
+
+/* Bubbles rise from where something happened in the app up to the fish. */
+
+.bubbles {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.bubble {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, rgb(255 255 255 / 55%) 0 14%, transparent 16%);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.faint {
+  border-color: rgb(255 255 255 / 50%);
+  background: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ripple {
+    animation: none;
+    opacity: 0;
+  }
 }

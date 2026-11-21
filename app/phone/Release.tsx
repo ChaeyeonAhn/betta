@@ -2,7 +2,7 @@
 
 // Born stage on the phone: my betta, and a swipe up (or the button) sends it
 // to the big screen. The fish flies off the top of the phone; on the screen it
-// swims in from the bottom (app/screen/scenes/Born.tsx).
+// swims up into its grid cell (app/screen/scenes/Grid.tsx).
 
 import { useRef, useState } from "react";
 import type { Genome } from "@/lib/protocol";
@@ -49,7 +49,7 @@ export function Release({ genome, playerId, tag, released, onRelease }: {
       }}
     >
       <WaterBackdrop />
-      <p className={styles.top}>{gone ? "큰 화면에서 내 베타를 찾아보세요." : "나의 베타가 태어났어요."}</p>
+      <p className={styles.top}>{gone ? "Find your betta on the big screen." : "Your betta is born."}</p>
 
       <div className={`${styles.fish} ${gone ? styles.gone : ""}`} style={gone ? undefined : { transform: `translateY(${drag}px)` }}>
         <BettaPreview genome={genome} playerId={playerId} tag={tag} width={260} />
@@ -57,7 +57,7 @@ export function Release({ genome, playerId, tag, released, onRelease }: {
 
       {!gone && (
         <button className={styles.button} onClick={release}>
-          ↑ 위로 밀어 보내기
+          ↑ Swipe up to release
         </button>
       )}
     </main>

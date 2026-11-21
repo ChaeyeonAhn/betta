@@ -1,5 +1,5 @@
 // Mode A content: the posts in the fake feed and the notifications that fall
-// over it during the 30 seconds. The app has no name yet ("TBD").
+// over it during the 45 seconds. The app has no name yet ("TBD").
 // Copy is placeholder and up for review (docs/plan.md §7).
 
 import type { FeedTag } from "./protocol.ts";
@@ -65,14 +65,14 @@ export const NOTICES: Notice[] = [
 ];
 
 /**
- * When each notice appears (ms from start). Gaps shrink from ~2.6s to ~0.5s,
- * so the 30 seconds start readable and end as a flood.
+ * When each notice appears (ms from start). With 30 notices over 45s, gaps
+ * shrink from ~4s to ~1s, so it starts readable and ends as a flood.
  */
 export function noticeSchedule(durationMs: number, count = NOTICES.length): number[] {
   const start = 1500;
   const span = durationMs - start - 1500;
-  // t = start + span * (i/(n-1))^0.6 : early gaps wide, late gaps narrow.
-  return Array.from({ length: count }, (_, i) => Math.round(start + span * Math.pow(i / (count - 1), 0.6)));
+  // t = start + span * (i/(n-1))^0.7 : early gaps wide, late gaps narrow.
+  return Array.from({ length: count }, (_, i) => Math.round(start + span * Math.pow(i / (count - 1), 0.7)));
 }
 
 /** How long a banner stays before it counts as ignored. */

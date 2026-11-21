@@ -6,8 +6,6 @@ import type { AdminCommand, Hello } from "@/lib/protocol";
 import { ANSWER_SCALE, SNS_QUESTIONS } from "@/lib/questions";
 import { ProjectionControls, useProjectionScale } from "./ProjectionControls";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
-import { ExhibitionBetta } from "@/app/_components/ExhibitionBetta";
-import { Born } from "./scenes/Born";
 import { Grid } from "./scenes/Grid";
 import { Open } from "./scenes/Open";
 import { STAGE_H, STAGE_W } from "./scenes/gridLayout";
@@ -74,6 +72,8 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
   const online = players.filter((p) => p.connected).length;
   const stage = state?.stage;
   const question = stage === "input" ? state?.question : null;
+  // Mode A's bettas grow on the phones and go straight into the grid as each one is done.
+  const caged = stage === "born" || stage === "grid" || (stage === "input" && state?.mode === "A");
 
   return (
     <main className={styles.root}>
@@ -82,11 +82,10 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
         height: STAGE_H,
         transform: `translate(-50%, -50%) scale(${projection.scale.x / 100}, ${projection.scale.y / 100})`,
       }}>
-        {(!stage || stage === "lobby" || stage === "input") && <WaterBackdrop />}
-        {stage === "born" && <Born players={players} />}
-        {stage === "grid" && state && <Grid state={state} />}
-        {stage === "open" && <Open players={players} socket={socket} />}
-        {(stage === "lobby" || stage === "input" || !stage) && (
+        {!caged && stage !== "open" && <WaterBackdrop />}
+        {caged && state && <Grid state={state} />}
+        {stage === "open" && state && <Open players={players} gridSize={state.gridSize} socket={socket} />}
+        {!caged && stage !== "open" && (
           <section className={styles.stage}>
             {question && (
               <div className={styles.question}>
@@ -96,25 +95,18 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
                   <span><b>0</b> {ANSWER_SCALE.low}</span>
                   <span><b>10</b> {ANSWER_SCALE.high}</span>
                 </div>
-                <p className={styles.responses}>{question.answered} / {question.participants} 응답</p>
+                <p className={styles.responses}>{question.answered} / {question.participants} answered</p>
               </div>
             )}
             {stage === "input" && state && !question && (
               <p className={styles.join}>
-                {state.mode === "A" ? "look at your phone" : "answer on your phone"}
+                answer on your phone
                 <br />
                 <span className={styles.count}>{players.filter((p) => p.done).length}</span> / {players.length} done
               </p>
             )}
             {stage === "lobby" && (
-              <div className={styles.lobby}>
-                <div>
-                  <h1 lang="en">Betta</h1>
-                  <p className={styles.join}>휴대폰으로 참여하기 · {joinUrl}</p>
-                  <small><span className={styles.count}>{online}</span> 명 입수</small>
-                </div>
-                <div aria-hidden><ExhibitionBetta /></div>
-              </div>
+              <p className={styles.lobby}>{joinUrl}</p>
             )}
           </section>
         )}

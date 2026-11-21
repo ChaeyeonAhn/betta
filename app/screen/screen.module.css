@@ -178,21 +178,9 @@
 }
 
 .lobby {
-  position: relative;
-  width: 1570px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  text-align: left;
+  margin: 0;
+  color: var(--silver);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: .02em;
 }
-.lobby h1 {
-  margin: 0 0 24px;
-  padding: 0;
-  border: 0;
-  color: var(--pearl);
-  font: italic 500 152px/.90 var(--display-serif);
-  letter-spacing: -.065em;
-}
-.lobby .join { color: var(--silver); font-size: 22px; }
-.lobby .count { margin-right: 5px; color: var(--shell); }
-.lobby small { display: block; margin-top: 12px; color: var(--pearl); font-size: 20px; }
