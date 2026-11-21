@@ -14,62 +14,24 @@
   -webkit-user-select: none;
 }
 
-/* Tap pad */
+/* Joystick: as plain as the feed, white lines on black. */
 
-/* Joystick */
-
-.me {
-  opacity: 0.9;
+.console {
+  justify-content: center;
+  background: #000;
 }
 
-.stick {
-  position: relative;
+.ring {
   display: grid;
   place-items: center;
-  border: 1px dashed #555;
+  border: 1px solid rgb(255 255 255 / 60%);
   border-radius: 50%;
 }
 
-.pad, .stick {
-  border: 1px solid var(--glass-line);
-  box-shadow: 0 0 0 8px #0c172733, 0 0 0 9px #a7c0dd22, inset 0 0 30px #101b39;
-  background: radial-gradient(ellipse at 42% 36%, #25355399, #101727bb 74%);
+.dot {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #fff;
+  pointer-events: none;
 }
-.pad {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: min(70vw, 280px);
-  aspect-ratio: 1;
-  background: none;
-  border: 1px solid #777;
-  border-radius: 50%;
-  font: inherit;
-  letter-spacing: 0.1em;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 60ms ease-out, background 60ms; font-family: var(--display-serif); font-size: 28px; color: var(--pearl); }
-.pressed {
-  transform: scale(0.94); background: #354563; }
-.count {
-  font-family: var(--font-mono);
-  font-size: 0.8rem; color: var(--silver); }
-.knob {
-  width: 64px;
-  height: 64px;
-  border: 1px solid #ddd;
-  border-radius: 50%;
-  pointer-events: none; border-color: #f2cabc; background: radial-gradient(circle at 36% 30%, #f8e1cf, #ca9c9d 62%, #916e83); }
-.fill {
-  height: 100%;
-  transform-origin: left;
-  transition: transform 200ms linear; background: var(--shell); }
-.bar {
-  width: min(80vw, 320px);
-  height: 4px;
-  overflow: hidden; background: #37485a; }
-.top {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 0.875rem; color: var(--pearl); }

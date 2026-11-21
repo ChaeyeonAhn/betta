@@ -7,10 +7,11 @@ import type { FeedEvent, Hello, Steer } from "@/lib/protocol";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import { BettaCard } from "./card/BettaCard";
 import { Joystick } from "./controls/Joystick";
-import { TapPad } from "./controls/TapPad";
 import { FakeFeed } from "./modes/FakeFeed";
 import { QuestionDial } from "./modes/QuestionDial";
 import { Release } from "./Release";
+import { LookAround } from "./LookAround";
+import { Cell } from "./Cell";
 import styles from "./phone.module.css";
 
 export function Phone({ room, socketUrl }: { room: string; socketUrl: string | null }) {
@@ -27,6 +28,8 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   );
   const sendSteer = useCallback((steer: Steer) => socket.current?.emit("steer", steer), [socket]);
   const cardDue = useAfter(me?.openUntil ?? null);
+  // A swipe on this phone plays the fish flying off before the phone becomes its cell.
+  const [flight, setFlight] = useState<"none" | "flying" | "landed">("none");
 
   if (rejected) return <Centered>{rejected}</Centered>;
   if (!connected || !me || !state) return <Centered dim>Connecting to the tank…</Centered>;
@@ -41,39 +44,44 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
     />;
   }
 
-  // Born, or Mode A as soon as this visitor's betta has grown: send it to the grid.
-  if (me.genome && (state.stage === "born" || (state.stage === "input" && state.mode === "A"))) {
-    return (
-      <Release
-        genome={me.genome}
-        playerId={me.id}
-        tag={shortTag(me.id)}
-        released={me.released}
-        onRelease={() => socket.current?.emit("release")}
-      />
-    );
-  }
-
-  if (state.stage === "grid" && me.genome) {
-    return <TapPad state={state} mine={me.effort} onTap={() => socket.current?.emit("effort", { amount: 1 })} />;
+  // Born (or Mode A once this betta has grown) until the walls break: release
+  // it, then be it, inside its cell. Late arrivals without a cell just look around.
+  const caged = state.stage === "born" || state.stage === "grid" || (state.stage === "input" && state.mode === "A");
+  if (caged && me.genome) {
+    if (me.released && me.slot !== null && flight !== "flying") {
+      return <Cell state={state} me={me} slot={me.slot} onPush={() => socket.current?.emit("effort", { amount: 1 })} />;
+    }
+    if (state.stage !== "grid" && (!me.released || flight === "flying")) {
+      return (
+        <Release
+          genome={me.genome}
+          playerId={me.id}
+          released={me.released}
+          onRelease={() => {
+            setFlight("flying");
+            socket.current?.emit("release");
+          }}
+          onGone={() => setFlight("landed")}
+        />
+      );
+    }
+    return <LookAround />;
   }
 
   if (state.stage === "open" && me.genome && cardDue) {
-    return <BettaCard genome={me.genome} playerId={me.id} tag={shortTag(me.id)} />;
+    return <BettaCard genome={me.genome} playerId={me.id} name={shortTag(me.id).slice(1)} />;
   }
 
   if (state.stage === "open" && me.genome) {
-    return <Joystick genome={me.genome} playerId={me.id} tag={shortTag(me.id)} onSteer={sendSteer} />;
+    return <Joystick onSteer={sendSteer} />;
   }
+
+  if (me.phase === "waiting") return <LookAround />;
 
   return (
     <Centered>
-      <p className={styles.title}>{me.phase === "waiting" ? "You're in the water" : me.done ? "Look at the big screen" : me.phase}</p>
-      <p className={styles.dim}>
-        {me.phase !== "waiting"
-          ? "All your answers are in."
-          : state.mode === "A" ? "Your betta will start growing here soon." : "Answer here once the first question opens."}
-      </p>
+      <p className={styles.title}>{me.done ? "Look at the big screen" : me.phase}</p>
+      <p className={styles.dim}>All your answers are in.</p>
     </Centered>
   );
 }

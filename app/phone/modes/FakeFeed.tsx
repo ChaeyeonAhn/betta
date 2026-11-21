@@ -32,7 +32,6 @@ const MIN_DWELL_MS = 300;
 const SETTLE_MS = 2600;
 /** Banners over the 45s. The 24 notices come round again near the end, in the flood. */
 const NOTICE_COUNT = 30;
-const moodLine = (hue: number) => `hsl(${Math.round(hue * 360)} 80% 64%)`;
 // The feed is scrolled for 45s; repeat the posts so it doesn't run out.
 const FEED = [...POSTS, ...POSTS, ...POSTS].map((post, i) => ({ ...post, key: `${post.id}-${i}` }));
 
@@ -216,10 +215,9 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
       <section className={styles.tank}>
         <WaterBackdrop />
         <div ref={fishRef} className={styles.fish}>
-          <BettaPreview genome={genome} playerId={playerId} width={250} growth={growth} />
+          <BettaPreview genome={genome} playerId={playerId} width={200} growth={growth} />
           {ripple > 0 && <span key={ripple} className={styles.ripple} aria-hidden />}
         </div>
-        <p className={styles.tankNote} aria-live="polite">{over ? "Your betta is grown." : "Your betta is growing."}</p>
         <div className={styles.progress} style={{ transform: `scaleX(${left / FEED_MS})` }} />
       </section>
 
@@ -276,7 +274,7 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
           <div className={styles.scrim} onClick={() => react("close")}>
             <div className={styles.card} onClick={(e) => e.stopPropagation()}>
               <p className={styles.cardTitle}>{card.card.title}</p>
-              <div className={styles.cardImage} style={card.tag === "mood" ? { "--mood": moodLine(card.card.hue) } as React.CSSProperties : undefined} />
+              <div className={styles.cardImage} />
               {card.card.body && <p className={styles.cardBody}>{card.card.body}</p>}
               <div className={styles.cardActions}>
                 {card.card.actions.map((action) => (
@@ -340,7 +338,7 @@ function PostView({
   return (
     <article ref={ref} className={styles.post}>
       <p className={styles.author}>{post.author}</p>
-      <div className={styles.image} style={post.tag === "mood" ? { "--mood": moodLine(post.hue) } as React.CSSProperties : undefined} />
+      <div className={styles.image} />
       <div className={styles.postFoot}>
         <button className={styles.like} onClick={onLike}>
           {liked ? "♥" : "♡"}

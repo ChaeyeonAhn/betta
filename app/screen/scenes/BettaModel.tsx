@@ -29,13 +29,16 @@ export function useBettaAtlas() {
 /**
  * `growth` (0–1, Mode A's phone): a fry grows into the full fish. Smaller,
  * shorter fins, paler colour. Eases toward the value it is given.
+ * `calm`: "drift" glides slowly side to side, level, fins at rest (the card);
+ * "still" holds that level side view without moving (the card's picture).
  */
-export function BettaModel({ genome, seed, size, followHeading = false, growth }: {
+export function BettaModel({ genome, seed, size, followHeading = false, growth, calm }: {
   genome: Genome;
   seed: string;
   size: number;
   followHeading?: boolean;
   growth?: number;
+  calm?: "drift" | "still";
 }) {
   const fish = useRef<Group>(null);
   const scaled = useRef<Group>(null);
@@ -75,6 +78,13 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth }
         uniforms.bettaFinLength.value = 0.72 + finLength * 0.4 * g;
         uniforms.bettaStrength.value = (0.44 + saturation * 0.43) * (markings === undefined ? 1 : 0.68 + markings * 0.60) * (0.25 + 0.75 * g);
       }
+    }
+    if (calm) {
+      membrane.time.value = 0;
+      const glideX = calm === "drift" ? Math.sin(clock.elapsedTime * 0.35 + phase) * 0.12 : 0;
+      fish.current.position.set(0.24 + glideX, 0, 0);
+      fish.current.rotation.set(0, 0, -BODY_REST_PITCH);
+      return;
     }
     const time = clock.elapsedTime;
     const drift = time * swim.drift * (0.65 + glide * 0.7) + phase;

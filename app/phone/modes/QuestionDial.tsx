@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { ANSWER_SCALE, SNS_QUESTIONS } from "@/lib/questions";
-import { shortTag } from "@/lib/playerId";
 import type { PlayerQuestion } from "@/lib/protocol";
 import { BettaPreview } from "../BettaPreview";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
@@ -28,7 +27,7 @@ export function QuestionDial({ question, playerId, onAnswer }: {
       </header>
       <div className={styles.preview}>
         <div className={styles.formation} style={{ opacity: 0.80 + formation * 0.20, transform: `scale(${0.84 + formation * 0.16})` }}>
-          <BettaPreview genome={question.preview} playerId={playerId} tag={shortTag(playerId)} width={240} />
+          <BettaPreview genome={question.preview} playerId={playerId} width={240} />
         </div>
         <p className={styles.feedback} aria-live="polite">
           {question.answered ? `Your answer shaped its ${item.effect}.` : "Pick a number, then press Send."}

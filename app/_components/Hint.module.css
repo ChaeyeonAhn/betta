@@ -1,0 +1,91 @@
+/* Every 3s: fade in, act it out, fade out. */
+.hint {
+  display: block;
+  fill: none;
+  stroke: rgb(255 255 255 / 80%);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+  animation: hint 3s ease-in-out infinite;
+}
+
+@keyframes hint {
+  0%, 8% { opacity: 0; }
+  18%, 62% { opacity: 1; }
+  74%, 100% { opacity: 0; }
+}
+
+/* turn */
+.rock {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rock 3s ease-in-out infinite;
+}
+.nudge { animation: nudge 3s ease-in-out infinite; }
+.left { --nudge: -2px; }
+.right { --nudge: 2px; }
+
+@keyframes rock {
+  0%, 18% { transform: perspective(80px) rotateY(0deg); }
+  32% { transform: perspective(80px) rotateY(-38deg); }
+  50% { transform: perspective(80px) rotateY(38deg); }
+  62%, 100% { transform: perspective(80px) rotateY(0deg); }
+}
+@keyframes nudge {
+  0%, 18%, 62%, 100% { transform: translateX(0); }
+  32%, 50% { transform: translateX(var(--nudge)); }
+}
+
+/* tap */
+.press { animation: press 3s ease-in-out infinite; }
+.ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: ring 3s ease-out infinite;
+}
+
+@keyframes press {
+  0%, 26%, 44%, 100% { transform: translateY(0); }
+  32%, 36% { transform: translateY(-4px); }
+}
+@keyframes ring {
+  0%, 32% { opacity: 0; transform: scale(.4); }
+  36% { opacity: 1; transform: scale(.7); }
+  58%, 100% { opacity: 0; transform: scale(1.8); }
+}
+
+/* swipe */
+.slide { animation: slide 3s ease-in-out infinite; }
+.chevron { animation: chevron 3s ease-in-out infinite; }
+
+@keyframes slide {
+  0%, 20% { transform: translateY(6px); }
+  50% { transform: translateY(-5px); }
+  62%, 100% { transform: translateY(-5px); }
+}
+@keyframes chevron {
+  0%, 30% { transform: translateY(0); opacity: .35; }
+  50% { transform: translateY(-3px); opacity: 1; }
+  70%, 100% { transform: translateY(-3px); opacity: .35; }
+}
+
+/* steer */
+.dot { fill: rgb(255 255 255 / 90%); stroke: none; }
+.orbit {
+  transform-origin: 32px 24px;
+  animation: orbit 3s ease-in-out infinite;
+}
+
+@keyframes orbit {
+  0%, 18% { transform: rotate(0deg) translateX(0); }
+  30% { transform: rotate(0deg) translateX(9px); }
+  56% { transform: rotate(300deg) translateX(9px); }
+  66%, 100% { transform: rotate(360deg) translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint, .rock, .nudge, .press, .ring, .orbit, .slide, .chevron { animation: none; }
+  .ring { opacity: 0; }
+}

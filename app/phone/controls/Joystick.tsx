@@ -1,25 +1,18 @@
 "use client";
 
-// Open stage on the phone: drag inside the circle to steer your betta.
+// Open stage on the phone: a bare console, one ring and a dot. Drag to steer.
 // Sends {x, y} in -1…1 about 20 times a second while held, and 0,0 on release.
 // The screen adds it as one force among schooling and personal space, so the
 // fish follows, but not perfectly.
 
 import { useEffect, useRef, useState } from "react";
-import type { Genome, Steer } from "@/lib/protocol";
-import { BettaPreview } from "../BettaPreview";
-import { WaterBackdrop } from "@/app/_components/PaintedWater";
+import type { Steer } from "@/lib/protocol";
 import styles from "./controls.module.css";
 
 const RADIUS = 110;
 const SEND_MS = 50;
 
-export function Joystick({ genome, playerId, tag, onSteer }: {
-  genome: Genome;
-  playerId: string;
-  tag: string;
-  onSteer: (steer: Steer) => void;
-}) {
+export function Joystick({ onSteer }: { onSteer: (steer: Steer) => void }) {
   const padRef = useRef<HTMLDivElement>(null);
   const steer = useRef<Steer>({ x: 0, y: 0 });
   const [knob, setKnob] = useState({ x: 0, y: 0 });
@@ -53,13 +46,10 @@ export function Joystick({ genome, playerId, tag, onSteer }: {
   };
 
   return (
-    <main className={styles.root}>
-      <div className={styles.me}>
-        <BettaPreview genome={genome} playerId={playerId} tag={tag} width={188} />
-      </div>
+    <main className={`${styles.root} ${styles.console}`}>
       <div
         ref={padRef}
-        className={styles.stick}
+        className={styles.ring}
         style={{ width: RADIUS * 2 + 40, height: RADIUS * 2 + 40 }}
         onPointerDown={(e) => {
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -70,10 +60,8 @@ export function Joystick({ genome, playerId, tag, onSteer }: {
         onPointerUp={stop}
         onPointerCancel={stop}
       >
-        <div className={styles.knob} style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />
+        <div className={styles.dot} style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />
       </div>
-      <WaterBackdrop />
-      <p className={styles.top}>Drag the circle to steer your betta.</p>
     </main>
   );
 }

@@ -26,11 +26,11 @@ lobby ──▶ input ──▶ born ──▶ grid ──▶ open ⟲ (no end)
 
 | stage | Projection (`/screen`) | Phone (`/phone`) | Next |
 | --- | --- | --- | --- |
-| `lobby` | Title, join URL, number of phones in, the cover betta | "You're in the water" | Admin key |
+| `lobby` | Only the join QR, floating in the water | No words: turn the phone to look around the water; a rocking-phone icon every 3s | Admin key |
 | `input` | A: the grid; each betta fades in (with its cube) in a random front cell as soon as its visitor releases it. B: the current question, 0/10 scale, answered count | A: growing betta + fake SNS app (45s), then swipe up to release. B: question + dial pad + live preview of my betta | A: everyone in the round released → `born`. B: advances by itself once everyone answered (950ms reveal), last question → `born` |
-| `born` | The grid, empty at first. Each betta fades in with its cube in a random front cell as it is released. Once everyone is in, grey placeholder bettas fade in with their cubes, front row first and then every row behind, over 14s; the full grid holds for 20s | My betta + `#XXXX` tag, swipe up (or button) to release | Auto after the fill + 20s hold. Admin `Space`: start the fill now / skip the hold |
-| `grid` | Same lattice, every cell full; cracks spread over the real bettas' cells with taps; shared gauge at the bottom | Big tap pad, my count, shared bar | Shared total ≥ threshold, or 60s timeout (server decides) |
-| `open` | Partitions fly apart, each betta bursts out of its own cell and swims in one 3D tank | Joystick for 90s, then the betta card (Save / Share) | None (admin reset only) |
+| `born` | The grid, empty at first. Each betta fades in with its cube in a random front cell as it is released. Once everyone is in, grey placeholder bettas fade in with their cubes while the camera pulls back to 2.2× its distance: the cells in view first (empty front cells leading), then each cube as it comes into the frame, so the tank keeps growing at its edges (14s); the huge full grid holds for 20s, and the camera eases back in for `grid` | My betta in the middle; the camera pulls back to show its cube in a grid; a swipe-up icon; swipe to release; then the phone **is** the betta, inside its cell (§2-3c) | Auto after the fill + 20s hold. Admin `Space`: start the fill now / skip the hold |
+| `grid` | Same lattice, every cell full; cracks spread over the real bettas' cells with taps; a tapping-finger icon over the shared gauge | Still inside the cell: tap anywhere to push on the front glass, which cracks; a hairline shared gauge | Shared total ≥ threshold, or 60s timeout (server decides) |
+| `open` | The empty grid fades away (2.2s) over the open tank; each betta drifts out of its own cell and swims in one 3D tank; a steering icon until every phone shows its card | A bare console (one ring, one dot) for 90s, then the betta card (Save / Share) | None (admin reset only) |
 
 Admin keys on `/screen` (only with `?key=<ADMIN_KEY>` when the server has one): `1`/`2` mode A/B (lobby only), `Space`/`→` next stage or next question, `Shift+Space` skip the questions to `born`, `R` reset, `P` drop disconnected phones, `H` hide HUD.
 
@@ -102,10 +102,10 @@ The whole room answers the same question, shown on the projection. When every co
 
 Why: in v0 the visitor never saw the betta while playing, so the fish in `born` felt like a result, not something they made. Now they watch their habits shape it.
 
-- **Layout**: the top 38% of the phone is the betta's water; a fry grows into a full betta over **45s** (`BettaModel` `growth`: smaller, shorter fins, paler colour at the start). The bottom is the SNS app (`TBD`), pitch black with white lines, to sit in the same deep ocean.
+- **Layout**: the top 28% of the phone is the betta's water; a fry grows into a full betta over **45s** (`BettaModel` `growth`: smaller, shorter fins, paler colour at the start). The bottom is the SNS app (**Bettagram**), pitch black with white lines, to sit in the same deep ocean.
 - **Bubbles**: every logged event lets a bubble go from where it happened (the touch point; the banner that timed out, fainter and slower; the post that scrolled away) up to the fish. When it arrives, a ring spreads from the fish and that event is added to the phone's preview genome (`genomeFromFeed` on the events that have landed). The server computes the real genome from the same events, so phone and projection end up the same. At 45s the app dims, the last bubbles land (≤2.6s), then the phone sends `done`.
-- **Feed**: a scrolling feed (8 posts × 3, line-drawn pictures; mood posts carry their hue as a coloured horizon). 30 banners over 45s (the 24 notices come round again near the end), gaps shrinking from ~4s to ~1s. A banner not touched within 4s counts as `ignore`. Tapping a banner opens a card with reactions (Like / Accept · Decline / Reply / Close). "+ Post" at the bottom.
-- Then the phone shows the grown betta with "Swipe up to release"; it swims into a random cell on the projection right away.
+- **Feed**: a scrolling feed (8 posts × 3; each photo is an empty white-line frame, no drawn placeholder). 30 banners over 45s (the 24 notices come round again near the end), gaps shrinking from ~4s to ~1s. A banner not touched within 4s counts as `ignore`. Tapping a banner opens a card with reactions (Like / Accept · Decline / Reply / Close). "+ Post" at the bottom.
+- Then the phone shows the grown betta alone in the middle; the camera pulls back and it turns out to be in a cube, one cell of a grid (`ReleaseScene.tsx`), and a swipe-up icon appears. Swiping lifts it off the top of the phone; it fades into a random cell on the projection right away. No status text on either side (no "growing" captions).
 - Tags: `brag` `mood` `friend` `stranger` `self`. The phone sends event batches every second.
 
 | Axis | Behaviour observed |
@@ -118,7 +118,7 @@ Why: in v0 the visitor never saw the betta while playing, so the fish in `born` 
 
 ### 2-3b. born: filling the grid (`app/phone/Release.tsx`, `app/screen/scenes/Grid.tsx`)
 
-- The phone shows my betta (3D preview) and its `#XXXX` tag. Swiping up (or the button) sends it off the top of the phone. The server gives it a **random free front cell** (`slot`) of `createGridLayout(gridSize)` (`lib/gridLayout.ts`, shared with the server).
+- The phone shows my betta (3D preview). Bettas carry no name tag anywhere except the card. Swiping up (or the button) sends it off the top of the phone. The server gives it a **random free front cell** (`slot`) of `createGridLayout(gridSize)` (`lib/gridLayout.ts`, shared with the server).
 - The projection starts as empty water: no cubes, no fish. A released betta **fades in together with its cube** (`GridTank` `VisitorCell`/`FadeIn`, 1.6s).
 - When every connected visitor in the round is in, the server sets `fillAt` and the deadline `fillAt + FILL_MS (14s) + FILL_HOLD_MS (20s)`. Placeholder bettas fade in with their cubes: the empty front cells first, then each row behind (shuffled within a row), slow at first and quickening. ~390 cubes, so their lines are one `LineSegments` and their fish two instanced draws; each carries a delay and the fade runs in the shaders. After the hold the stage moves to `grid` on its own.
 - `Grid.tsx` draws input (A), born and grid with one WebGL tank, so nothing remounts between them. `gridSize` only grows during a round, so cells keep their place.
@@ -126,8 +126,10 @@ Why: in v0 the visitor never saw the betta while playing, so the fish in `born` 
 ### 2-3c. grid · open
 
 - **Visual**: the bettas are 3D (`BettaModel`, procedural mesh in `bettaMesh.ts`, UV atlas texture `/betta-uv.webp`, `bettaMaterial.ts`). The water is a shader of moving surfaces and scattered light (`PaintedWater`, `waterSurfaces.ts`; the modelled light shafts were removed 11/21), the same "bottomless ocean" across born, grid and open. The SVG `BettaShape` remains as a fallback without WebGL.
-- **grid** (`Grid.tsx`, `GridTank.tsx`, `GridFillerFish.tsx`, `app/phone/controls/TapPad.tsx`): wide-angle 3D lattice, every cell full (real bettas + placeholders). Each tap cracks my cell. Threshold = bettas × 30 taps; the total leaks 2 taps/s per connected betta; 60s timeout.
-- **open** (`Open.tsx`, `WaterTank.tsx`, `waterCurrent.ts`, `app/phone/controls/Joystick.tsx`): partitions fly apart, each betta bursts out of its own cell into a tank with depth. The joystick (−1…1, ~20Hz) is the strongest force. Late bettas enter from a side edge.
+- **Inside the cell, on the phone** (`app/phone/Cell.tsx`, `GridTank` `pov`, `useDeviceLook.ts`): from release until the walls break, the phone renders the same grid (same layout, slots, seeded placeholders and fill clock) from inside its own cell, without its own fish. The betta faces **out of the grid, toward the room**, so turning the phone right looks toward −x: the cells to its left on the projection, as a fish looking back at the room would see them. Yaw is a full turn (behind it, the grid goes on), pitch ±70°, both relative to how the phone was held at first; without a sensor (desktop, plain http) dragging looks around. The water shader follows the turning camera (`PaintedWater` `followCamera`), so the sea continues all round.
+- **grid** (`Grid.tsx`, `GridTank.tsx`, `GridFillerFish.tsx`): wide-angle 3D lattice, every cell full (real bettas + placeholders). Each tap (anywhere on the phone's cell view) cracks my cell: the same seeded cracks (`cracks.ts`) on the projection and on the phone's front glass, seen from inside. Threshold = bettas × 30 taps; the total leaks 2 taps/s per connected betta; 60s timeout.
+- **Icons, not words** (`app/_components/Hint.tsx`): a white-line icon fades in every 3s and acts out what to do: `turn` (phone rocking: lobby, inside the cell), `tap` (finger: grid, phone and projection), `steer` (dot circling a ring: open on the projection).
+- **open** (`Open.tsx`, `WaterTank.tsx`, `waterCurrent.ts`, `app/phone/controls/Joystick.tsx`): the grid's cubes and placeholders fade away over the tank (`Screen.tsx` keeps a fishless `Grid leaving` on a clear background for 2.2s; each visitor's betta in it hands over to its open-tank copy in 0.7s), and each betta drifts slowly out of its own cell into a tank with depth. The console (one ring and a dot on black; −1…1, ~20Hz) is the strongest force. Late bettas enter from a side edge.
 - **Betta card** (`app/phone/card/`): 90s after a visitor enters `open` (`openUntil`), the joystick is replaced by their card. A hidden canvas renders the betta once (`CardSnapshot`), `composeCard` draws a 1080 × 1350 PNG (black, white lines, the betta, tag, date, trait lines from `traits.ts`). Save downloads it; Share uses the Web Share API with the file (on iOS Save also goes through the share sheet, which has "Save Image"). Same card for A and B.
 
 ### 2-4. Behaviour in open (built)
@@ -164,19 +166,22 @@ Why: in v0 the visitor never saw the betta while playing, so the fish in `born` 
 ```
 app/
   page.tsx                   landing: just the links to /phone and /screen over the water
-  _components/               BettaShape (SVG fallback), ExhibitionBetta (cover), PaintedWater + water shaders
+  _components/               BettaShape (SVG fallback), ExhibitionBetta (cover), PaintedWater + water shaders, Hint (icons)
   screen/
     page.tsx  Screen.tsx     projection, admin keys, lobby/question overlay
     ProjectionControls.tsx   projection size calibration
-    scenes/                  Grid (input A + born + grid; + GridTank, GridFillerFish), Open (+ WaterTank),
+    scenes/                  Grid (input A + born + grid; + GridTank, GridFillerFish, cracks), Open (+ WaterTank),
                              BettaCanvas, BettaModel, bettaMesh, bettaMaterial,
                              gridLayout, waterCurrent, swimmingPitch
   phone/
     page.tsx  Phone.tsx      phone UI switch by stage/phase
     BettaPreview(.Scene)     3D preview of my betta
+    LookAround.tsx           lobby: look around the water by turning the phone
     Release.tsx              born: swipe up to release
+    Cell.tsx                 after release until open: inside my cell (first person)
+    useDeviceLook.ts         orientation sensor → yaw/pitch, drag fallback, taps
     modes/                   FakeFeed (A), QuestionDial (B)
-    controls/                TapPad (grid), Joystick (open)
+    controls/                Joystick (open)
     card/                    BettaCard, CardSnapshot, composeCard, traits (end of open)
 lib/
   protocol.ts                events and state types (server + pages)
@@ -217,7 +222,7 @@ If time runs short, drop in this order: colour bleed → late-joiner single cube
 - **Server redeploy = session reset.** State is in memory only; don't redeploy during the exhibition.
 - **Room code and admin key**: the server rejects other rooms; admin commands need `ADMIN_KEY` (`/screen?key=…`). Without it the screen is read-only. CORS allows only `ALLOWED_ORIGINS` (the Vercel URL).
 - **Load**: `state` is broadcast at most every 100ms. Each 3D betta is its own mesh; check frame rate on the projection machine with 20+ bettas.
-- **iOS shake** would need `DeviceMotionEvent.requestPermission()` inside a tap, and HTTPS. Tapping is the default; shaking isn't built.
+- **Orientation sensor** needs HTTPS (the Vercel URL; not the LAN `http://` dev URL) and, on iOS, a tap to grant motion access: the first tap on the phone asks. Nothing on screen says to tap, so an iPhone that never taps in the lobby only gets to look around once it taps in the cell. Check on real devices, along with the frame rate of the cell view (hundreds of placeholder cubes + every visitor's betta) on mid-range phones.
 - **Haptics**: `navigator.vibrate` works on Android Chrome only.
 - **Next 16.4.3 security notice**: check for a patch release before the exhibition.
 
@@ -228,14 +233,13 @@ If time runs short, drop in this order: colour bleed → late-joiner single cube
 - Water affecting behaviour: rules where the space changes how bettas move
 - Labyrinth organ: rising to the surface to breathe = "stepping off the network"
 - Running totals: "today this tank holds n% of this kind of betta" (no ending, a quiet corner display)
-- QR code in the lobby (now a text URL)
 - Projection mapping (see ID412 W3 experiment)
 
 ## 7. Open decisions
 
 - [x] **Mode A redesign**: the betta grows above the feed; bubbles carry each action to it (§2-3)
 - [ ] Mode B question wording (§2-2)
-- [ ] Mode A copy and the app name (now `TBD`); whether 30 banners over 45s feels right
+- [ ] Mode A copy; whether 30 banners over 45s feels right
 - [ ] Card wording (`app/phone/card/traits.ts`) and whether the 90s in open is the right length
 - [ ] Effort threshold, timeout, fade time: settle by running it with real people
 - [ ] Exhibition date, projector resolution and aspect, expected maximum visitors

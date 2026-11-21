@@ -10,13 +10,13 @@
 // No fighting: relations show only as drifting together or keeping distance.
 // Positions live in refs shared by the WebGL tank and the screen-space tags.
 
+import { Hint } from "@/app/_components/Hint";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
 import { type Group, MathUtils } from "three";
 import { BettaShape } from "@/app/_components/BettaShape";
 import type { BettaSocket } from "@/hooks/useBetta";
 import { genomeDistance } from "@/lib/genome";
-import { shortTag } from "@/lib/playerId";
 import type { Genome, PlayerView, Steer } from "@/lib/protocol";
 import { BettaCanvas, BettaVisual, stagePoint } from "./BettaCanvas";
 import { BettaModel } from "./BettaModel";
@@ -45,10 +45,8 @@ export function Open({ players, gridSize, socket }: {
   socket: RefObject<BettaSocket | null>;
 }) {
   const bettas = players.filter((p) => p.genome);
-  const [opening] = useState(() => ({
-    ...createGridLayout(gridSize),
-    occupied: new Set(bettas.flatMap((p) => p.slot === null ? [] : [p.slot])),
-  }));
+  const steering = useSteering(bettas);
+  const [opening] = useState(() => createGridLayout(gridSize));
   const fish = useRef(new Map<string, Fish>());
   const els = useRef(new Map<string, HTMLDivElement>());
   const flips = useRef(new Map<string, HTMLDivElement>());
@@ -56,7 +54,7 @@ export function Open({ players, gridSize, socket }: {
   const current = useRef<WaterCurrent>({ x: 0, y: 0, offsetX: 0, offsetY: 0, time: 0 });
 
   // Keep the sim in step with who has a betta. New fish start in their grid
-  // cell and burst outwards (the walls just came down); late fish enter from an edge.
+  // cell and drift out of it as the grid fades (Screen.tsx); late fish enter from an edge.
   const firstFrame = fish.current.size === 0;
   bettas.forEach((p) => {
     if (fish.current.has(p.id)) return;
@@ -65,7 +63,7 @@ export function Open({ players, gridSize, socket }: {
       ? projectedFishCenter(start, opening.side)
       : { x: Math.random() < 0.5 ? -FISH : STAGE_W + FISH, y: STAGE_H * (0.2 + Math.random() * 0.6) };
     const away = Math.atan2(c.y - STAGE_H / 2, c.x - STAGE_W / 2) + (Math.random() - 0.5) * 0.8;
-    const speed = firstFrame ? 260 + Math.random() * 160 : 160;
+    const speed = firstFrame ? 40 + Math.random() * 50 : 160;
     const vx = firstFrame ? Math.cos(away) * speed : (c.x < 0 ? 1 : -1) * speed;
     const vy = firstFrame ? Math.sin(away) * speed : 0;
     const preferredDepth = 130 + Math.random() * 520;
@@ -173,24 +171,6 @@ export function Open({ players, gridSize, socket }: {
           {bettas.map((p) => <OpenBetta key={p.id} id={p.id} genome={p.genome!} fish={fish} />)}
         </BettaCanvas>
       </BettaVisual>
-      {/* The partitions fly apart once, as the scene opens. */}
-      {opening.slots.map((c, i) => {
-        const { side } = opening;
-        const dx = (c.x - STAGE_W / 2) * 0.6;
-        const dy = (c.y - STAGE_H / 2) * 0.9 - 40;
-        return (
-          <div
-            key={i}
-            className={styles.wall}
-            style={{
-              left: c.x - side / 2, top: c.y - side / 2, width: side, height: side,
-              borderColor: opening.occupied.has(i) ? "#f5f5f3" : "#626262",
-              "--dx": `${dx}px`, "--dy": `${dy}px`,
-            } as React.CSSProperties}
-          />
-        );
-      })}
-
       {bettas.map((p) => (
         <div
           key={p.id}
@@ -210,11 +190,10 @@ export function Open({ players, gridSize, socket }: {
           >
             <BettaShape genome={p.genome!} size={FISH} />
           </div>
-          <span className={styles.tag}>{shortTag(p.id)}</span>
         </div>
       ))}
 
-      <p className={styles.caption}>Guide your betta with your phone</p>
+      {steering && <Hint kind="steer" size={64} className={styles.hint} />}
     </section>
   );
 }
@@ -239,4 +218,21 @@ function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: Ref
       <BettaModel genome={genome} seed={id} size={FISH * 0.58} followHeading />
     </group>
   );
+}
+
+/**
+ * True while any connected visitor still has the console: their phone turns
+ * into the betta card at `openUntil`. Re-renders when the next one is due.
+ */
+function useSteering(bettas: PlayerView[]) {
+  const [now, setNow] = useState(() => Date.now());
+  const due = bettas.filter((p) => p.connected).map((p) => p.openUntil);
+  const steering = due.some((at) => at === null || at > now);
+  const next = Math.min(...due.filter((at): at is number => at !== null && at > now));
+  useEffect(() => {
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setNow(Date.now()), next - Date.now() + 50);
+    return () => clearTimeout(timer);
+  }, [next]);
+  return steering;
 }

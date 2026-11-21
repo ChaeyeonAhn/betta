@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
-import type { AdminCommand, Hello } from "@/lib/protocol";
+import type { AdminCommand, Hello, SessionState } from "@/lib/protocol";
 import { ANSWER_SCALE, SNS_QUESTIONS } from "@/lib/questions";
 import { ProjectionControls, useProjectionScale } from "./ProjectionControls";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
@@ -10,6 +10,8 @@ import { Grid } from "./scenes/Grid";
 import { Open } from "./scenes/Open";
 import { STAGE_H, STAGE_W } from "./scenes/gridLayout";
 import styles from "./screen.module.css";
+
+const GRID_FADE_MS = 2200;
 
 type Props = {
   room: string;
@@ -74,6 +76,17 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
   const question = stage === "input" ? state?.question : null;
   // Mode A's bettas grow on the phones and go straight into the grid as each one is done.
   const caged = stage === "born" || stage === "grid" || (stage === "input" && state?.mode === "A");
+  // When the walls come down, the empty grid stays a moment over the open tank and fades away.
+  const lastGrid = useRef<SessionState | null>(null);
+  if (stage === "grid" && state) lastGrid.current = state;
+  const [leaving, setLeaving] = useState<SessionState | null>(null);
+  useEffect(() => {
+    if (stage !== "open" || !lastGrid.current) return;
+    setLeaving(lastGrid.current);
+    lastGrid.current = null;
+    const timer = setTimeout(() => setLeaving(null), GRID_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [stage]);
 
   return (
     <main className={styles.root}>
@@ -85,6 +98,11 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
         {!caged && stage !== "open" && <WaterBackdrop />}
         {caged && state && <Grid state={state} />}
         {stage === "open" && state && <Open players={players} gridSize={state.gridSize} socket={socket} />}
+        {stage === "open" && leaving && (
+          <div className={styles.gridLeaving} style={{ animationDuration: `${GRID_FADE_MS}ms` }}>
+            <Grid state={leaving} leaving />
+          </div>
+        )}
         {!caged && stage !== "open" && (
           <section className={styles.stage}>
             {question && (

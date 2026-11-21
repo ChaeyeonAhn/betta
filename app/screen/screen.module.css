@@ -179,7 +179,20 @@
 
 .lobby {
   display: block;
-  width: 200px;
-  height: 200px;
+  width: 100px;
+  height: 100px;
   image-rendering: pixelated;
+}
+
+/* The grid's cubes and placeholders over the opening tank, fading away. */
+.gridLeaving {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  animation: gridLeaving ease-in-out forwards;
+}
+
+@keyframes gridLeaving {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }

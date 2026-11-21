@@ -30,17 +30,6 @@
   opacity: 0.43;
 }
 
-.tag {
-  position: absolute;
-  bottom: 8px;
-  left: 0;
-  width: 100%;
-  color: #cecece;
-  font: 13px var(--font-mono);
-  text-align: center;
-  text-shadow: 0 1px 4px #000, 0 0 2px #000;
-}
-
 .cracks {
   position: absolute;
   inset: 0;
@@ -56,23 +45,21 @@
   text-align: center;
 }
 
-.caption {
-  margin: 0 0 0.5rem;
-  color: var(--silver);
-  text-shadow: 0 1px 6px #02050c;
-  font-family: var(--font-mono);
-  font-size: 16px;
+.hint {
+  margin: 0 auto 10px;
 }
 
+/* Square ends: no radius, and the fill grows by width so its edge lands on a pixel. */
 .bar {
   height: 4px;
+  border-radius: 0;
   background: #222;
   overflow: hidden;
 }
 
 .fill {
   height: 100%;
-  background: var(--shell);
-  transform-origin: left;
-  transition: transform 200ms linear;
+  border-radius: 0;
+  background: #fff;
+  transition: width 200ms linear;
 }

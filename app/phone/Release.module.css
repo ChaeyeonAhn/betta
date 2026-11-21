@@ -2,34 +2,23 @@
   isolation: isolate;
   position: fixed;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  padding: 48px 16px calc(32px + env(safe-area-inset-bottom));
-  background: var(--water-paper);
-  color: var(--pearl);
+  overflow: hidden;
+  background: #000;
   touch-action: none;
   user-select: none;
-  overflow: hidden;
+  -webkit-user-select: none;
 }
 
-.fish {
-  transition: transform 80ms linear;
+.fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
 }
 
-.gone {
-  transform: translateY(-110vh);
-  transition: transform 700ms cubic-bezier(0.5, 0, 0.8, 0.4);
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(40px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
 }
-
-.top {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 0.875rem; font: 500 24px / 1.45 var(--display-serif); color: var(--pearl); }
-.button {
-  padding: 12px 20px;
-  border: 1px solid #444;
-  border-radius: 999px;
-  font: inherit;
-  font-size: 0.9rem; border-color: var(--glass-line); background: #11192ccc; color: var(--pearl); min-height: 48px; }
