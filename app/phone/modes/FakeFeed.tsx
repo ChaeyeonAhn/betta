@@ -1,6 +1,6 @@
 "use client";
 
-// Mode A: 45 seconds in a fake SNS app, with your betta living above it.
+// 45 seconds in a fake SNS app, with your betta living above it.
 //
 // The bottom of the phone is the app: a scrolling feed, and notification
 // banners that drop in faster and faster. The top is the water, where a fry
@@ -10,11 +10,17 @@
 // scrolled away. When the bubble reaches the fish, that event is added to the
 // betta's genome on the phone, so the visitor watches their habits shape it.
 //
-// The events also go to the server in small batches; the server computes the
-// real genome from the same events (lib/genome.ts), so the phone's preview
-// and the betta on the projection end up the same.
+// An event goes to the server only once its bubble has landed, and the feed
+// finishes only after the last bubble lands (or is dropped from both sides).
+// The server computes the genome from exactly the events the fish took in
+// (lib/genome.ts), so the betta on the phone, the one it releases and the
+// one on the projection are the same fish.
+//
+// News about you (likes, views, followers) is done with one tap. Only a
+// notice that asks for something opens a card: Reply to a message, Accept or
+// Decline a request, ♡ a friend's new post. The feed scrolls without end.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BANNER_MS, NOTICES, POSTS, noticeSchedule, type CardAction, type Notice } from "@/lib/feed";
 import { genomeFromFeed } from "@/lib/genome";
 import { FEED_MS, type FeedEvent } from "@/lib/protocol";
@@ -28,12 +34,19 @@ type Point = { x: number; y: number };
 type Log = (event: Omit<FeedEvent, "t">, from?: Point | null) => void;
 
 const MIN_DWELL_MS = 300;
-/** After the 45s, wait this long at most for bubbles still rising. */
-const SETTLE_MS = 2600;
+/** A post on screen sends its dwell this often. */
+const DWELL_SLICE_MS = 1500;
+/** After the 45s, wait this long at most for bubbles still rising (the slowest take ~4s). */
+const SETTLE_MS = 5500;
 /** Banners over the 45s. The 24 notices come round again near the end, in the flood. */
 const NOTICE_COUNT = 30;
-// The feed is scrolled for 45s; repeat the posts so it doesn't run out.
-const FEED = [...POSTS, ...POSTS, ...POSTS].map((post, i) => ({ ...post, key: `${post.id}-${i}` }));
+type FeedPost = (typeof POSTS)[number] & { key: string };
+/** The posts again and again: the feed never runs out. */
+const feedPage = (page: number): FeedPost[] => POSTS.map((post, i) => ({ ...post, key: `${post.id}-${page}-${i}` }));
+/** Load another round of posts this close to the bottom. */
+const MORE_PX = 1200;
+
+const ACTION_LABEL: Record<CardAction, string> = { like: "♡ Like", accept: "Accept", decline: "Decline", reply: "Reply" };
 
 const center = (rect: DOMRect): Point => ({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
 
@@ -61,11 +74,15 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
   /** Events whose bubble reached the fish: the betta is made of these. */
   const landed = useRef<FeedEvent[]>([]);
   const flying = useRef(0);
+  /** Set when the finished betta goes to the server; nothing lands after that. */
+  const sealed = useRef(false);
   const [genome, setGenome] = useState(() => genomeFromFeed([]));
   const [ripple, setRipple] = useState(0);
 
   const land = useCallback((event: FeedEvent) => {
+    if (sealed.current) return;
     landed.current.push(event);
+    bufferRef.current.push(event);
     setGenome(genomeFromFeed(landed.current));
     setRipple((n) => n + 1);
   }, []);
@@ -116,7 +133,6 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
 
   const log: Log = useCallback((partial, from) => {
     const event: FeedEvent = { ...partial, t: Math.round(performance.now() - startRef.current) };
-    bufferRef.current.push(event);
     const origin = from ?? touchRef.current ?? { x: window.innerWidth / 2, y: window.innerHeight * 0.8 };
     bubble(event, origin, partial.kind === "ignore");
   }, [bubble]);
@@ -166,11 +182,13 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
         setCard(null);
         setBanners([]);
         activeRef.current.clear();
-        // Let the last bubbles reach the fish before the server finishes the betta.
+        // Let the last bubbles reach the fish, then seal: the server gets
+        // exactly the events that landed, nothing that was still rising.
         const until = performance.now() + SETTLE_MS;
         settle = setInterval(() => {
           if (flying.current > 0 && performance.now() < until) return;
           clearInterval(settle);
+          sealed.current = true;
           send({ events: bufferRef.current.splice(0), done: true });
         }, 100);
       }, FEED_MS),
@@ -184,11 +202,12 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
     };
   }, [send, log, dismiss]);
 
+  // News about you ends with the tap; a notice that asks something opens its card.
   const openBanner = (banner: Banner) => {
     if (card) log({ kind: "close", tag: card.tag });
     log({ kind: "tap", tag: banner.notice.tag });
     dismiss(banner.key);
-    setCard(banner.notice);
+    setCard(banner.notice.card ? banner.notice : null);
   };
 
   const swipeBanner = (banner: Banner) => {
@@ -202,7 +221,10 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
     setCard(null);
   };
 
-  const like = (post: (typeof FEED)[number]) => {
+  const [pages, setPages] = useState(3);
+  const feed = useMemo(() => Array.from({ length: pages }, (_, page) => feedPage(page)).flat(), [pages]);
+
+  const like = (post: FeedPost) => {
     if (liked.has(post.key)) return;
     log({ kind: "like", tag: post.tag });
     setLiked((set) => new Set(set).add(post.key));
@@ -227,8 +249,14 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
           touchRef.current = { x: e.clientX, y: e.clientY };
         }}
       >
-        <main className={styles.feed}>
-          {FEED.map((post) => (
+        <main
+          className={styles.feed}
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            if (el.scrollTop + el.clientHeight > el.scrollHeight - MORE_PX) setPages((n) => n + 1);
+          }}
+        >
+          {feed.map((post) => (
             <PostView key={post.key} post={post} liked={liked.has(post.key)} onLike={() => like(post)} log={log} />
           ))}
         </main>
@@ -265,16 +293,16 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
           {banners.length > 3 && <div className={styles.more}>+{banners.length - 3} more</div>}
         </div>
 
-        {card && (
+        {card?.card && (
           <div className={styles.scrim} onClick={() => react("close")}>
             <div className={styles.card} onClick={(e) => e.stopPropagation()}>
               <p className={styles.cardTitle}>{card.card.title}</p>
-              <div className={styles.cardImage} />
+              {card.card.photo && <div className={styles.cardImage} />}
               {card.card.body && <p className={styles.cardBody}>{card.card.body}</p>}
               <div className={styles.cardActions}>
                 {card.card.actions.map((action) => (
                   <button key={action} className={styles.action} onClick={() => react(action)}>
-                    {action === "like" ? "♡ Like" : action === "accept" ? "Accept" : action === "decline" ? "Decline" : "Reply"}
+                    {card.card?.labels?.[action] ?? ACTION_LABEL[action]}
                   </button>
                 ))}
                 <button className={styles.actionGhost} onClick={() => react("close")}>
@@ -298,7 +326,7 @@ function PostView({
   onLike,
   log,
 }: {
-  post: (typeof FEED)[number];
+  post: FeedPost;
   liked: boolean;
   onLike: () => void;
   log: Log;
@@ -309,16 +337,30 @@ function PostView({
     const el = ref.current;
     if (!el) return;
     let since: number | null = null;
-    const end = () => {
+    let tick: ReturnType<typeof setInterval> | undefined;
+    // Dwell goes out in slices while the post is on screen, so the betta
+    // changes as the visitor lingers, not all at once when they scroll away
+    // or the 45 seconds end.
+    const slice = (min: number) => {
       if (since === null) return;
-      const ms = Math.round(performance.now() - since);
+      const now = performance.now();
+      const ms = Math.round(now - since);
+      if (ms < min) return;
+      since = now;
+      log({ kind: "dwell", tag: post.tag, ms, hue: post.hue }, center(el.getBoundingClientRect()));
+    };
+    const end = () => {
+      slice(MIN_DWELL_MS);
       since = null;
-      if (ms >= MIN_DWELL_MS) log({ kind: "dwell", tag: post.tag, ms, hue: post.hue }, center(el.getBoundingClientRect()));
+      clearInterval(tick);
     };
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) since ??= performance.now();
-        else end();
+        if (entry.isIntersecting) {
+          if (since !== null) return;
+          since = performance.now();
+          tick = setInterval(() => slice(DWELL_SLICE_MS), DWELL_SLICE_MS);
+        } else end();
       },
       { threshold: 0.6 },
     );
@@ -326,6 +368,7 @@ function PostView({
     window.addEventListener("betta-feed-end", end);
     return () => {
       observer.disconnect();
+      clearInterval(tick);
       window.removeEventListener("betta-feed-end", end);
     };
   }, [post, log]);

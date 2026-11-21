@@ -220,12 +220,14 @@ function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: Ref
 }
 
 /**
- * True while any connected visitor still has the console: their phone turns
- * into the betta card at `openUntil`. Re-renders when the next one is due.
+ * True while any visitor still has the console: their phone turns into the
+ * betta card at `openUntil`. A phone that drops off for a moment (screen lock,
+ * Safari in the background) still counts until its time is up, so the hint
+ * doesn't vanish while people are steering. Re-renders when the next one is due.
  */
 function useSteering(bettas: PlayerView[]) {
   const [now, setNow] = useState(() => Date.now());
-  const due = bettas.filter((p) => p.connected).map((p) => p.openUntil);
+  const due = bettas.map((p) => p.openUntil);
   const steering = due.some((at) => at === null || at > now);
   const next = Math.min(...due.filter((at): at is number => at !== null && at > now));
   useEffect(() => {
