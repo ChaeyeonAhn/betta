@@ -55,7 +55,7 @@ export function Grid({ state }: { state: SessionState }) {
       })}
 
       <footer className={styles.footer}>
-        <p className={styles.caption}>tap your phone to push the walls · together{left !== null ? ` · ${left}s` : ""}</p>
+        <p className={styles.caption}>휴대폰을 함께 두드려 칸막이를 열어주세요{left !== null ? ` · ${left}초` : ""}</p>
         <div className={styles.bar}>
           <div className={styles.fill} style={{ transform: `scaleX(${share})` }} />
         </div>

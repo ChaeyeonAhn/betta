@@ -1,6 +1,6 @@
 "use client";
 
-// Open stage on the phone: drag inside the circle to steer your betta.
+// Open stage on the phone: drag inside the circle to 원을 드래그해 베타가 갈 방향을 정하세요..
 // Sends {x, y} in -1…1 about 20 times a second while held, and 0,0 on release.
 // The screen adds it as one force among schooling and personal space, so the
 // fish follows, but not perfectly.
@@ -54,7 +54,7 @@ export function Joystick({ genome, playerId, tag, onSteer }: {
   return (
     <main className={styles.root}>
       <div className={styles.me}>
-        <BettaPreview genome={genome} playerId={playerId} tag={tag} width={120} />
+        <BettaPreview genome={genome} playerId={playerId} tag={tag} width={188} />
       </div>
       <div
         ref={padRef}
@@ -71,7 +71,7 @@ export function Joystick({ genome, playerId, tag, onSteer }: {
       >
         <div className={styles.knob} style={{ transform: `translate(${knob.x}px, ${knob.y}px)` }} />
       </div>
-      <p className={styles.top}>steer your betta</p>
+      <p className={styles.top}>원을 드래그해 베타가 갈 방향을 정하세요.</p>
     </main>
   );
 }

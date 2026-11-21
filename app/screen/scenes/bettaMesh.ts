@@ -55,9 +55,12 @@ function fin(start: Point, end: Point, rim: Point[], rays = 48, rings = 14) {
       const rootY = start[1] + (end[1] - start[1]) * angle;
       const rimRipple = 1 + 0.018 * Math.sin(angle * 143) * radius ** 4;
       const fold = Math.sin(angle * 37 + radius * 3) * 0.017 + Math.cos(angle * 12) * 0.026;
+      // Bow each ray before it opens into the fan. The root and scalloped rim
+      // stay on their profile while the middle of the membrane trails behind.
+      const bow = Math.sin(radius * Math.PI) * Math.hypot(tip.x - rootX, tip.y - rootY);
       vertices.push(
-        rootX + (tip.x - rootX) * radius * rimRipple,
-        rootY + (tip.y - rootY) * radius * rimRipple,
+        rootX + (tip.x - rootX) * radius * rimRipple - bow * 0.105,
+        rootY + (tip.y - rootY) * radius * rimRipple + bow * Math.sin(angle * 7.4) * 0.10,
         fold * radius,
       );
       uvs.push(angle, radius);
@@ -81,17 +84,17 @@ function fin(start: Point, end: Point, rim: Point[], rays = 48, rings = 14) {
 type FinProfile = [Point, Point, Point[]];
 
 const tail: FinProfile = [[-0.39, 0.018], [-0.39, -0.017], [
-  [-0.48, 0.045], [-0.64, 0.22], [-0.82, 0.30], [-0.99, 0.25],
-  [-1.09, 0.14], [-1.08, -0.02], [-1.02, -0.19], [-0.89, -0.34],
-  [-0.73, -0.38], [-0.56, -0.31], [-0.48, -0.17], [-0.40, -0.044],
+  [-0.48, 0.045], [-0.64, 0.22], [-0.84, 0.38], [-1.04, 0.35],
+  [-1.19, 0.15], [-1.16, -0.03], [-1.13, -0.25], [-0.93, -0.42],
+  [-0.73, -0.46], [-0.56, -0.31], [-0.48, -0.17], [-0.40, -0.044],
 ]];
 const dorsal: FinProfile = [[0.17, 0.065], [-0.42, 0.015], [
-  [0.12, 0.133], [0.06, 0.206], [-0.06, 0.246], [-0.23, 0.248],
-  [-0.37, 0.193], [-0.46, 0.103], [-0.46, 0.025],
+  [0.12, 0.133], [0.06, 0.206], [-0.13, 0.29], [-0.34, 0.34],
+  [-0.54, 0.25], [-0.64, 0.17], [-0.55, 0.045],
 ]];
 const anal: FinProfile = [[0.20, -0.062], [-0.40, -0.014], [
   [0.16, -0.11], [0.11, -0.21], [0.01, -0.29], [-0.16, -0.37],
-  [-0.34, -0.38], [-0.52, -0.32], [-0.53, -0.24], [-0.46, -0.11], [-0.44, -0.028],
+  [-0.41, -0.45], [-0.63, -0.39], [-0.60, -0.24], [-0.46, -0.11], [-0.44, -0.028],
 ]];
 const ventral = fin([0.23, -0.064], [0.19, -0.063], [
   [0.21, -0.084], [0.165, -0.161], [0.072, -0.24], [0.114, -0.158], [0.155, -0.088],

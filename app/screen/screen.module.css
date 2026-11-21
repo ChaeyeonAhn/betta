@@ -6,15 +6,24 @@
   overflow: hidden;
 }
 
-/* Fixed 1920 × 602 stage, centred and scaled by Screen.tsx. Everything inside is stage px. */
+/* Fixed source pixels; only ProjectionControls changes the output scale. */
 .frame {
   position: absolute;
   top: 50%;
   left: 50%;
   transform-origin: center;
   overflow: hidden;
-  background: #000;
-  outline: 1px solid #151515;
+  background: var(--water-paper);
+  background-size: cover, 100% 100%;
+}
+
+.frame::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 1px solid #a5b2c6;
+  content: "";
+  pointer-events: none;
 }
 
 .stage {
@@ -35,6 +44,50 @@
 .count {
   color: #2ec4b6;
   font-size: 28px;
+}
+
+.question {
+  width: 1420px;
+  color: var(--pearl);
+}
+
+.questionNumber,
+.responses {
+  margin: 0;
+  color: var(--shell);
+  font: 19px var(--font-mono);
+}
+
+.question h1 {
+  max-width: 1260px;
+  margin: 24px auto 34px;
+  padding: 0;
+  border: 0;
+  font-family: var(--display-serif);
+  font-weight: 500;
+  font-size: 60px;
+  line-height: 1.22;
+  word-break: keep-all;
+}
+
+.questionScale {
+  display: flex;
+  justify-content: center;
+  gap: 100px;
+  color: var(--silver);
+  font-size: 24px;
+}
+
+.questionScale b {
+  margin-right: 8px;
+  color: var(--shell);
+  font-family: var(--font-mono);
+}
+
+.responses {
+  margin-top: 34px;
+  color: var(--silver);
+  font-size: 16px;
 }
 
 .hud {
@@ -73,3 +126,73 @@
 .error {
   color: #ff6b6b;
 }
+
+.calibration {
+  position: absolute;
+  z-index: 2;
+  right: 16px;
+  bottom: 16px;
+  min-width: 112px;
+  border: 1px solid #3b5758;
+  border-radius: 6px;
+  background: rgb(5 13 16 / 90%);
+  color: #d7e8e5;
+  font: 12px / 1.4 var(--font-sans);
+}
+
+.calibration summary {
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.calibrationBody {
+  display: grid;
+  width: 214px;
+  gap: 7px;
+  padding: 0 10px 10px;
+}
+
+.calibrationBody label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+}
+
+.calibrationBody input {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: #91d7c8;
+}
+
+.calibrationActions {
+  display: flex;
+  gap: 6px;
+}
+
+.calibrationActions button {
+  border: 1px solid #4b5d5d;
+  border-radius: 3px;
+  padding: 3px 7px;
+  background: #142322;
+  color: inherit;
+  font: inherit;
+}
+
+.lobby {
+  position: relative;
+  width: 1570px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+}
+.lobby h1 {
+  margin: 0 0 24px;
+  padding: 0;
+  border: 0;
+  color: var(--pearl);
+  font: italic 500 152px/.90 var(--display-serif);
+  letter-spacing: -.065em;
+}
+.lobby .join { color: var(--silver); font-size: 22px; }
+.lobby .count { margin-right: 5px; color: var(--shell); }
+.lobby small { display: block; margin-top: 12px; color: var(--pearl); font-size: 20px; }

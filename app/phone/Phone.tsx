@@ -7,6 +7,7 @@ import type { FeedEvent, Hello, Steer } from "@/lib/protocol";
 import { Joystick } from "./controls/Joystick";
 import { TapPad } from "./controls/TapPad";
 import { FakeFeed } from "./modes/FakeFeed";
+import { QuestionDial } from "./modes/QuestionDial";
 import { Release } from "./Release";
 import styles from "./phone.module.css";
 
@@ -25,11 +26,16 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   const sendSteer = useCallback((steer: Steer) => socket.current?.emit("steer", steer), [socket]);
 
   if (rejected) return <Centered>{rejected}</Centered>;
-  if (!connected || !me || !state) return <Centered dim>connecting…</Centered>;
+  if (!connected || !me || !state) return <Centered dim>수조에 연결하는 중…</Centered>;
 
   if (me.phase === "input" && !me.done) {
     if (state.mode === "A") return <FakeFeed send={sendFeed} />;
-    return <Centered dim>Mode B · dial pad (not built yet)</Centered>;
+    if (!me.question) return <Centered dim>질문을 기다리는 중…</Centered>;
+    return <QuestionDial
+      playerId={me.id}
+      question={me.question}
+      onAnswer={(q, value) => socket.current?.emit("answer", { q, value })}
+    />;
   }
 
   if (state.stage === "born" && me.genome) {
@@ -54,9 +60,9 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
 
   return (
     <Centered>
-      <p className={styles.title}>{me.phase === "waiting" ? "입수 완료" : me.done ? "Look up." : me.phase}</p>
+      <p className={styles.title}>{me.phase === "waiting" ? "입수 완료" : me.done ? "큰 화면을 바라봐 주세요" : me.phase}</p>
       <p className={styles.dim}>
-        stage {state.stage} · mode {state.mode}
+        {me.phase === "waiting" ? "첫 질문이 열리면 이곳에서 답할 수 있어요." : "응답을 모두 보냈어요."}
       </p>
     </Centered>
   );

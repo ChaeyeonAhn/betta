@@ -15,22 +15,26 @@ export function BettaCanvas({
   scenery,
   distance = CAMERA_DISTANCE,
   viewHeight = STAGE_H,
+  dpr = 1,
+  background = "#000",
 }: {
   children: ReactNode;
   scenery?: ReactNode;
   distance?: number;
   viewHeight?: number;
+  dpr?: number | [number, number];
+  background?: string | null;
 }) {
   const fov = 2 * Math.atan(viewHeight / (2 * distance)) * 180 / Math.PI;
   return (
     <Canvas
       aria-hidden
-      dpr={[1, 1.5]}
+      dpr={dpr}
       style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
       resize={{ offsetSize: true }}
       camera={{ position: [0, 0, distance], fov, near: 10, far: 6400 }}
     >
-      <color attach="background" args={["#000"]} />
+      {background && <color attach="background" args={[background]} />}
       <hemisphereLight args={["#f7fbff", "#6f7995", 2.1]} />
       <directionalLight position={[0, 580, 440]} color="#fff3e8" intensity={2.1} />
       <directionalLight position={[-340, 240, -440]} color="#e6f2ff" intensity={1.6} />

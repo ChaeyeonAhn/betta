@@ -14,7 +14,7 @@ export function TapPad({ state, mine, onTap }: { state: SessionState; mine: numb
 
   return (
     <main className={styles.root}>
-      <p className={styles.top}>push your wall. everyone at once.</p>
+      <p className={styles.top}>다 함께 두드리면 칸막이가 열려요.</p>
       <button
         className={`${styles.pad} ${pressed ? styles.pressed : ""}`}
         onPointerDown={(e) => {
@@ -27,7 +27,7 @@ export function TapPad({ state, mine, onTap }: { state: SessionState; mine: numb
         onPointerCancel={() => setPressed(false)}
         onPointerLeave={() => setPressed(false)}
       >
-        tap
+        두드리기
         <span className={styles.count}>{mine}</span>
       </button>
       <div className={styles.bar}>

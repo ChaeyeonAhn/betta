@@ -3,20 +3,25 @@
   display: grid;
   place-content: center;
   padding: 1rem;
-  background: #000;
-  color: #f2f2f2;
+  background: var(--water-paper);
+  color: var(--pearl);
   text-align: center;
 }
 
 .title {
   margin: 0;
-  font-size: 2rem;
-  font-weight: 600;
+  font-family: var(--display-serif);
+  font-weight: 500;
+  font-size: clamp(36px, 10vw, 58px);
+  letter-spacing: -.045em;
 }
 
 .dim {
   margin: 0.5rem 0 0;
-  color: #8a8a8a;
+  color: var(--silver);
   font-family: var(--font-mono);
   font-size: 0.875rem;
+  max-width: 34ch;
+  margin-inline: auto;
+  line-height: 1.7;
 }

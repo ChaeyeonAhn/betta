@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import type { AdminCommand, Hello } from "@/lib/protocol";
+import { ANSWER_SCALE, SNS_QUESTIONS } from "@/lib/questions";
+import { ProjectionControls, useProjectionScale } from "./ProjectionControls";
+import { ExhibitionBetta } from "@/app/_components/ExhibitionBetta";
 import { Born } from "./scenes/Born";
 import { Grid } from "./scenes/Grid";
 import { Open } from "./scenes/Open";
@@ -24,6 +27,7 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
   const { state, connected, rejected, socket } = useBetta(hello, socketUrl);
   const [hud, setHud] = useState(true);
   const [joinUrl, setJoinUrl] = useState("");
+  const projection = useProjectionScale();
 
   useEffect(() => {
     const query = `/phone?room=${encodeURIComponent(room)}`;
@@ -45,41 +49,55 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
   useEffect(() => {
     const send = (command: AdminCommand) => socket.current?.emit("admin", command);
     const onKey = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      if (event.key === "h" || event.key === "H") {
+        setHud((value) => !value);
+        event.preventDefault();
+        return;
+      }
+      if (event.target instanceof HTMLElement && event.target.closest("input, button, summary")) return;
       if (event.key === "1") send({ cmd: "setMode", mode: "A" });
       else if (event.key === "2") send({ cmd: "setMode", mode: "B" });
-      else if (event.key === " " || event.key === "ArrowRight") send({ cmd: "next" });
+      else if (event.key === " " && event.shiftKey && state?.stage === "input") send({ cmd: "goto", stage: "born" });
+      else if (event.key === " " || event.key === "ArrowRight") send({ cmd: "next", question: state?.question?.index });
       else if (event.key === "r" || event.key === "R") send({ cmd: "reset" });
       else if (event.key === "p" || event.key === "P") send({ cmd: "prune" });
-      else if (event.key === "h" || event.key === "H") setHud((v) => !v);
       else return;
       event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [socket]);
-
-  // The projection is authored at 1920 × 602 and scaled to fit the window (letterboxed).
-  const [scale, setScale] = useState(1);
-  useEffect(() => {
-    const update = () => setScale(Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H));
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
+  }, [socket, state?.stage, state?.question?.index]);
 
   const players = state?.players ?? [];
   const online = players.filter((p) => p.connected).length;
   const stage = state?.stage;
+  const question = stage === "input" ? state?.question : null;
 
   return (
     <main className={styles.root}>
-      <div className={styles.frame} style={{ width: STAGE_W, height: STAGE_H, transform: `translate(-50%, -50%) scale(${scale})` }}>
+      <div className={styles.frame} style={{
+        width: STAGE_W,
+        height: STAGE_H,
+        transform: `translate(-50%, -50%) scale(${projection.scale.x / 100}, ${projection.scale.y / 100})`,
+      }}>
         {stage === "born" && <Born players={players} />}
         {stage === "grid" && state && <Grid state={state} />}
         {stage === "open" && <Open players={players} socket={socket} />}
         {(stage === "lobby" || stage === "input" || !stage) && (
           <section className={styles.stage}>
-            {stage === "input" && state && (
+            {question && (
+              <div className={styles.question}>
+                <p className={styles.questionNumber}>{question.index + 1} / {SNS_QUESTIONS.length}</p>
+                <h1>{SNS_QUESTIONS[question.index].prompt}</h1>
+                <div className={styles.questionScale}>
+                  <span><b>0</b> {ANSWER_SCALE.low}</span>
+                  <span><b>10</b> {ANSWER_SCALE.high}</span>
+                </div>
+                <p className={styles.responses}>{question.answered} / {question.participants} 응답</p>
+              </div>
+            )}
+            {stage === "input" && state && !question && (
               <p className={styles.join}>
                 {state.mode === "A" ? "look at your phone" : "answer on your phone"}
                 <br />
@@ -87,11 +105,14 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
               </p>
             )}
             {stage === "lobby" && (
-              <p className={styles.join}>
-                {joinUrl}
-                <br />
-                <span className={styles.count}>{online}</span> in the water
-              </p>
+              <div className={styles.lobby}>
+                <div>
+                  <h1 lang="en">Betta</h1>
+                  <p className={styles.join}>휴대폰으로 참여하기 · {joinUrl}</p>
+                  <small><span className={styles.count}>{online}</span> 명 입수</small>
+                </div>
+                <div aria-hidden><ExhibitionBetta /></div>
+              </div>
             )}
           </section>
         )}
@@ -119,9 +140,10 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
               </li>
             ))}
           </ul>
-          <p className={styles.keys}>1/2 mode · space next · R reset · P drop offline · H hide</p>
+          <p className={styles.keys}>1/2 mode · space next · Shift+Space skip to born · R reset · P prune · H hide</p>
         </aside>
       )}
+      {hud && <ProjectionControls {...projection} />}
     </main>
   );
 }

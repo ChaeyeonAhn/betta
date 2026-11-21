@@ -6,65 +6,14 @@
   align-items: center;
   justify-content: space-evenly;
   padding: 32px 16px calc(24px + env(safe-area-inset-bottom));
-  background: #000;
-  color: #f2f2f2;
+  background: var(--water-paper);
+  color: var(--pearl);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.top {
-  margin: 0;
-  color: #8a8a8a;
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-}
-
 /* Tap pad */
-
-.pad {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: min(70vw, 280px);
-  aspect-ratio: 1;
-  background: none;
-  border: 1px solid #777;
-  border-radius: 50%;
-  color: #eee;
-  font: inherit;
-  font-size: 1.25rem;
-  letter-spacing: 0.1em;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 60ms ease-out, background 60ms;
-}
-
-.pressed {
-  transform: scale(0.94);
-  background: #1a1a1a;
-}
-
-.count {
-  color: #777;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-}
-
-.bar {
-  width: min(80vw, 320px);
-  height: 4px;
-  background: #222;
-  overflow: hidden;
-}
-
-.fill {
-  height: 100%;
-  background: #e8e8e8;
-  transform-origin: left;
-  transition: transform 200ms linear;
-}
 
 /* Joystick */
 
@@ -80,11 +29,46 @@
   border-radius: 50%;
 }
 
+.pad, .stick {
+  border: 1px solid var(--glass-line);
+  box-shadow: 0 0 0 8px #0c172733, 0 0 0 9px #a7c0dd22, inset 0 0 30px #101b39;
+  background: radial-gradient(ellipse at 42% 36%, #25355399, #101727bb 74%);
+}
+.pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: min(70vw, 280px);
+  aspect-ratio: 1;
+  background: none;
+  border: 1px solid #777;
+  border-radius: 50%;
+  font: inherit;
+  letter-spacing: 0.1em;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 60ms ease-out, background 60ms; font-family: var(--display-serif); font-size: 28px; color: var(--pearl); }
+.pressed {
+  transform: scale(0.94); background: #354563; }
+.count {
+  font-family: var(--font-mono);
+  font-size: 0.8rem; color: var(--silver); }
 .knob {
   width: 64px;
   height: 64px;
   border: 1px solid #ddd;
   border-radius: 50%;
-  background: #111;
-  pointer-events: none;
-}
+  pointer-events: none; border-color: #f2cabc; background: radial-gradient(circle at 36% 30%, #f8e1cf, #ca9c9d 62%, #916e83); }
+.fill {
+  height: 100%;
+  transform-origin: left;
+  transition: transform 200ms linear; background: var(--shell); }
+.bar {
+  width: min(80vw, 320px);
+  height: 4px;
+  overflow: hidden; background: #37485a; }
+.top {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.875rem; color: var(--pearl); }

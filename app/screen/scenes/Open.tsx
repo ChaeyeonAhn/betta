@@ -8,7 +8,7 @@
 //   sociability  pull towards (and matching speed with) fish with a similar genome
 //   walls        soft push back from the stage edges
 // No fighting: relations show only as drifting together or keeping distance.
-// Positions live in refs and are written straight to the DOM each frame.
+// Positions live in refs shared by the WebGL tank and the screen-space tags.
 
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useFrame } from "@react-three/fiber";
@@ -23,6 +23,8 @@ import { BettaModel } from "./BettaModel";
 import { createGridLayout, projectedFishCenter, STAGE_H, STAGE_W } from "./gridLayout";
 import styles from "./Open.module.css";
 import { swimmingPitch } from "./swimmingPitch";
+import { advanceWater, projectTankPoint, TANK_CAMERA_DISTANCE, TANK_DEPTH, waterAt, type WaterCurrent } from "./waterCurrent";
+import { WaterTank } from "./WaterTank";
 
 const FISH = 150; // BettaShape width in the tank
 const FISH_H = FISH * 0.7;
@@ -31,7 +33,11 @@ const EDGE = 80;
 const SIMILAR = 0.7; // genomeDistance below this = "like me"
 const STEER_STALE_MS = 800;
 
-type Fish = { x: number; y: number; vx: number; vy: number; wander: number; dir: 1 | -1; genome: Genome };
+type Fish = {
+  x: number; y: number; depth: number; preferredDepth: number;
+  vx: number; vy: number; screenVx: number; screenVy: number;
+  wander: number; dir: 1 | -1; genome: Genome;
+};
 
 export function Open({ players, socket }: { players: PlayerView[]; socket: RefObject<BettaSocket | null> }) {
   const bettas = players.filter((p) => p.genome);
@@ -40,6 +46,7 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
   const els = useRef(new Map<string, HTMLDivElement>());
   const flips = useRef(new Map<string, HTMLDivElement>());
   const steers = useRef(new Map<string, Steer & { at: number }>());
+  const current = useRef<WaterCurrent>({ x: 0, y: 0, offsetX: 0, offsetY: 0, time: 0 });
 
   // Keep the sim in step with who has a betta. New fish start in their grid
   // cell and burst outwards (the walls just came down); late fish enter from an edge.
@@ -54,7 +61,12 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
     const speed = firstFrame ? 260 + Math.random() * 160 : 160;
     const vx = firstFrame ? Math.cos(away) * speed : (c.x < 0 ? 1 : -1) * speed;
     const vy = firstFrame ? Math.sin(away) * speed : 0;
-    fish.current.set(p.id, { x: c.x, y: c.y, vx, vy, wander: Math.random() * Math.PI * 2, dir: vx < 0 ? -1 : 1, genome: p.genome! });
+    const preferredDepth = 130 + Math.random() * 520;
+    fish.current.set(p.id, {
+      x: c.x, y: c.y, depth: firstFrame ? 0 : preferredDepth, preferredDepth,
+      vx, vy, screenVx: vx, screenVy: vy, wander: Math.random() * Math.PI * 2,
+      dir: vx < 0 ? -1 : 1, genome: p.genome!,
+    });
   });
   for (const id of fish.current.keys()) if (!bettas.some((p) => p.id === id)) fish.current.delete(id);
 
@@ -73,9 +85,10 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
       last = now;
       const all = [...fish.current.entries()];
+      advanceWater(current.current, fish.current.values(), dt);
       for (const [id, f] of all) {
         let ax = 0;
         let ay = 0;
@@ -87,9 +100,10 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
           ax += (s.x * MAX_SPEED - f.vx) * 3;
           ay += (s.y * MAX_SPEED - f.vy) * 3;
         } else {
-          f.wander += (Math.random() - 0.5) * dt * 3;
-          ax += Math.cos(f.wander) * 40;
-          ay += Math.sin(f.wander) * 18; // the tank is wide: drift more sideways
+          f.wander += (Math.random() - 0.5) * dt * (1.8 + (g.reactivity ?? 0.5) * 2.4);
+          const glide = 0.60 + (g.glide ?? 0.5) * 0.8;
+          ax += Math.cos(f.wander) * 40 * glide;
+          ay += Math.sin(f.wander) * 18 * glide;
         }
 
         const personal = 70 + g.boundary * 160;
@@ -97,7 +111,7 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
           if (otherId === id) continue;
           const dx = o.x - f.x;
           const dy = o.y - f.y;
-          const d = Math.hypot(dx, dy) || 1;
+          const d = Math.hypot(dx, dy, (o.depth - f.depth) * 0.65) || 1;
           if (d < personal) {
             const push = (1 - d / personal) * 420 * (0.5 + g.boundary);
             ax -= (dx / d) * push;
@@ -123,15 +137,21 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
           f.vx *= MAX_SPEED / speed;
           f.vy *= MAX_SPEED / speed;
         }
-        f.x += f.vx * dt;
-        f.y += f.vy * dt;
-        if (f.vx < -8) f.dir = -1;
-        else if (f.vx > 8) f.dir = 1;
+        const before = projectTankPoint(f.x, f.y, f.depth);
+        const water = waterAt(current.current, f.x, f.y, f.depth);
+        f.x = MathUtils.clamp(f.x + (f.vx + water.x) * dt, 30, STAGE_W - 30);
+        f.y = MathUtils.clamp(f.y + (f.vy + water.y) * dt, 26, STAGE_H - 26);
+        f.depth = MathUtils.clamp(f.depth + ((f.preferredDepth - f.depth) * 0.28 + water.depth) * dt, 0, TANK_DEPTH - 60);
+        const projected = projectTankPoint(f.x, f.y, f.depth);
+        f.screenVx = (projected.x - before.x) / dt;
+        f.screenVy = (projected.y - before.y) / dt;
+        if (f.screenVx < -8) f.dir = -1;
+        else if (f.screenVx > 8) f.dir = 1;
 
         const el = els.current.get(id);
-        if (el) el.style.transform = `translate(${f.x - FISH / 2}px, ${f.y - FISH_H / 2}px)`;
+        if (el) el.style.transform = `translate(${projected.x - FISH / 2}px, ${projected.y - FISH_H / 2}px) scale(${projected.scale})`;
         const flip = flips.current.get(id);
-        if (flip) flip.style.transform = `scaleX(${f.dir}) rotate(${-f.dir * swimmingPitch(f.vx, f.vy)}rad)`;
+        if (flip) flip.style.transform = `scaleX(${f.dir}) rotate(${-f.dir * swimmingPitch(f.screenVx, f.screenVy)}rad)`;
       }
       raf = requestAnimationFrame(tick);
     };
@@ -141,13 +161,11 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
 
   return (
     <section className={styles.root}>
-      {bettas.length > 0 && (
-        <BettaVisual fallback={null}>
-          <BettaCanvas>
-            {bettas.map((p) => <OpenBetta key={p.id} id={p.id} genome={p.genome!} fish={fish} />)}
-          </BettaCanvas>
-        </BettaVisual>
-      )}
+      <BettaVisual fallback={null}>
+        <BettaCanvas distance={TANK_CAMERA_DISTANCE} scenery={<WaterTank current={current} />}>
+          {bettas.map((p) => <OpenBetta key={p.id} id={p.id} genome={p.genome!} fish={fish} />)}
+        </BettaCanvas>
+      </BettaVisual>
       {/* The partitions fly apart once, as the scene opens. */}
       {opening.slots.map((c, i) => {
         const { side } = opening;
@@ -189,7 +207,7 @@ export function Open({ players, socket }: { players: PlayerView[]; socket: RefOb
         </div>
       ))}
 
-      <p className={styles.caption}>steer your betta from your phone</p>
+      <p className={styles.caption}>휴대폰으로 나의 베타를 이끌어 주세요</p>
     </section>
   );
 }
@@ -202,10 +220,11 @@ function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: Ref
     const group = model.current;
     if (!state || !group) return;
     group.position.set(...stagePoint(state.x, state.y));
+    group.position.z = -state.depth;
     const facing = state.dir === 1 ? 0 : Math.PI;
     group.rotation.y = MathUtils.damp(group.rotation.y, facing, 8, delta);
     // In XYZ Euler order, the Y turn does not reverse the pitch's Y component.
-    group.rotation.z = swimmingPitch(state.vx, state.vy);
+    group.rotation.z = swimmingPitch(state.screenVx, state.screenVy);
   });
 
   return (

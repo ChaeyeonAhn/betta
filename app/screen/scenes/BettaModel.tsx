@@ -8,8 +8,8 @@ import { createBettaMaterial } from "./bettaMaterial";
 import { BODY_REST_PITCH, body, eyeball, fins, pairedFins } from "./bettaMesh";
 
 const ATLAS = "/betta-uv.webp";
-const eye = new MeshStandardMaterial({ color: "#151619", roughness: 0.22 });
-const eyeRim = new MeshStandardMaterial({ color: "#c9c5ab", roughness: 0.38 });
+const eye = new MeshStandardMaterial({ color: "#110c25", roughness: 0.22 });
+const eyeRim = new MeshStandardMaterial({ color: "#9d82dc", roughness: 0.38 });
 const SWIMS = [
   { travel: 0.16, drift: 0.49, roll: 0.05, turn: 0.13, pulse: 1.0 }, // hover
   { travel: 0.36, drift: 0.70, roll: 0.11, turn: 0.32, pulse: 0.76 }, // slow glide
@@ -39,14 +39,14 @@ export function BettaModel({ genome, seed, size, followHeading = false }: {
     for (const char of seed) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
     return hash >>> 0;
   }, [seed]);
-  const pattern = id % 3;
+  const { hue, saturation, finLength, boundary, sociability, markings, reactivity = 0.5, glide = 0.5 } = genome;
+  const pattern = markings === undefined ? id % 3 : (id + Math.min(2, Math.floor(markings * 3))) % 3;
   const phase = (id % 101) / 16;
-  const { hue, saturation, finLength, boundary, sociability } = genome;
   const swim = SWIMS[(id >>> 8) % SWIMS.length];
   const [skin, membrane] = useMemo(() => {
-    const style = { hue, saturation, finLength, pattern, seed: id / 0xffffffff, filler: false };
+    const style = { hue, saturation, finLength, pattern, markings, seed: id / 0xffffffff, filler: false };
     return [createBettaMaterial(atlas, style, false), createBettaMaterial(atlas, style, true)];
-  }, [atlas, hue, saturation, finLength, pattern, id]);
+  }, [atlas, hue, saturation, finLength, pattern, markings, id]);
 
   useEffect(() => () => {
     skin.material.dispose();
@@ -56,9 +56,9 @@ export function BettaModel({ genome, seed, size, followHeading = false }: {
   useFrame(({ clock }) => {
     if (!fish.current) return;
     const time = clock.elapsedTime;
-    const drift = time * swim.drift + phase;
-    const stroke = time * (2.4 + sociability * 4.2) * swim.pulse + phase;
-    const room = 1 - boundary * 0.5;
+    const drift = time * swim.drift * (0.65 + glide * 0.7) + phase;
+    const stroke = time * (2.4 + sociability * 4.2) * swim.pulse * (0.68 + reactivity * 0.64) + phase;
+    const room = (1 - boundary * 0.5) * (0.70 + glide * 0.6);
     const thrust = Math.sin(stroke) * 0.045 * swim.pulse;
     membrane.time.value = stroke;
     const roll = Math.sin(stroke * 0.39) * swim.roll;

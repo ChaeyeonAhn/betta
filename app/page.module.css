@@ -1,5 +1,56 @@
 .root {
-  max-width: 48rem;
-  margin: 0 auto;
-  padding: 3rem 1rem;
+  min-height: 100svh;
+  display: grid;
+  align-items: center;
+  padding: clamp(16px, 4vw, 64px);
+  background: #080b15;
+  color: var(--pearl);
 }
+.cover {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  align-content: center;
+  min-height: min(840px, calc(100svh - 8vw));
+  padding: clamp(28px, 7vw, 120px);
+  border: 1px solid var(--glass-line);
+  background: var(--water-paper);
+}
+.intro, .routes { position: relative; z-index: 1; width: fit-content; }
+.intro h1 {
+  margin: 0 0 22px;
+  padding: 0;
+  border: 0;
+  font: italic 500 clamp(100px, 15vw, 210px)/.85 var(--display-serif);
+  letter-spacing: -.07em;
+}
+.specimen {
+  position: absolute;
+  inset: 8% 2% 6% 43%;
+  display: grid;
+  place-content: center;
+  pointer-events: none;
+  transform: rotate(-9deg);
+}
+.routes { display: flex; flex-wrap: wrap; gap: 12px 22px; margin-top: 40px; }
+.routes a {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  min-height: 44px;
+  padding: 2px 4px;
+  border-bottom: 1px solid var(--glass-line);
+  color: var(--pearl);
+  font-size: 14px;
+}
+.routes a:first-child { color: var(--shell); border-color: var(--shell); }
+.routes a:hover { text-decoration: none; border-color: currentColor; }
+@media (max-width: 760px) {
+  .cover { align-content: space-between; min-height: calc(100svh - 32px); padding: 44px 22px 32px; }
+  .intro h1 { font-size: clamp(92px, 23vw, 152px); }
+  .specimen { inset: 29% 0 17%; }
+  .specimen figure { max-width: 88vw; }
+  .routes { margin: 0; gap: 8px 18px; }
+}
+.intro p { margin: 0; font-size: clamp(15px, 1.3vw, 21px); line-height: 1.7; word-break: keep-all; color: #d6e0ec; }

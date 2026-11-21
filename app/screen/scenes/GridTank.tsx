@@ -83,20 +83,20 @@ export function GridTank({ players, layout }: { players: GridPlayer[]; layout: L
   const endOfGrid = GRID_CAMERA_DISTANCE + (DEPTH_ROWS * Z_PITCH + 1) * side;
 
   return (
-    <BettaCanvas distance={GRID_CAMERA_DISTANCE} scenery={(
+    <BettaCanvas background={null} distance={GRID_CAMERA_DISTANCE} scenery={(
       <>
-        <fog attach="fog" args={["#000", GRID_CAMERA_DISTANCE + side * 0.25, endOfGrid]} />
+        <fog attach="fog" args={["#090f1e", GRID_CAMERA_DISTANCE + side * 0.25, endOfGrid]} />
         <Line points={scene.distant} segments color="#242936" lineWidth={0.78} fog toneMapped={false} />
         {scene.quietFronts.length > 0 && (
           <>
-            <Line points={scene.quietDepth} segments color="#3b414c" lineWidth={0.9} fog toneMapped={false} />
+            <Line points={scene.quietDepth} segments color="#49566e" lineWidth={0.9} fog toneMapped={false} />
             <Line points={scene.quietFronts} segments color="#60646b" lineWidth={1.1} fog toneMapped={false} />
           </>
         )}
         {scene.activeCorners.length > 0 && (
           <>
-            <Line points={scene.activeDepth} segments color="#81868e" lineWidth={1.15} fog toneMapped={false} />
-            <Line points={scene.activeCorners} segments color="#f1f1ee" lineWidth={1.6} fog toneMapped={false} />
+            <Line points={scene.activeDepth} segments color="#97a9c8" lineWidth={1.15} fog toneMapped={false} />
+            <Line points={scene.activeCorners} segments color="#f5e4dd" lineWidth={1.6} fog toneMapped={false} />
           </>
         )}
       </>

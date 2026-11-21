@@ -260,3 +260,14 @@ html[data-theme="dark"] .danger {
     color: #ff6b6b;
   }
 }
+
+:root {
+  --abyss: #090d1c;
+  --pearl: #f8ecdc;
+  --shell: #ffd0b9;
+  --silver: #b1c2d6;
+  --glass-line: rgb(172 198 226 / 34%);
+  --engraving: url("/night-water.webp");
+  --water-paper: linear-gradient(180deg, #080c1e22, #090f225c 68%, #07112740), var(--engraving) 68% center / cover no-repeat, var(--abyss);
+  --display-serif: "Baskerville", "Iowan Old Style", "AppleMyungjo", "Batang", Georgia, serif;
+}

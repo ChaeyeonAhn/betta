@@ -23,8 +23,10 @@ import {
   type Genome,
   type Mode,
   type Phase,
+  type PlayerQuestion,
   type ServerToClient,
   type SessionState,
+  type SharedQuestion,
   type Stage,
 } from "../lib/protocol.ts";
 import { genomeFromAnswers, genomeFromFeed } from "../lib/genome.ts";
@@ -36,6 +38,7 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 /** A disconnected player's betta fades and is removed after this long. */
 const FADE_MS = 3 * 60_000;
 const BROADCAST_MS = 100;
+const ANSWER_REVEAL_MS = 950;
 /** Grid stage auto-break; env override is for tests. */
 const GRID_TIMEOUT_MS = Number(process.env.GRID_MS) || GRID_MS;
 /** Comma-separated page origins allowed to connect, e.g. the Vercel URL. Unset = any. */
@@ -49,6 +52,7 @@ type Player = {
   lastSeen: number;
   phase: Phase;
   answers: (number | null)[];
+  sharedInput: boolean;
   feed: FeedEvent[];
   feedDone: boolean;
   genome: Genome | null;
@@ -58,11 +62,13 @@ type Player = {
 
 const session = {
   stage: "lobby" as Stage,
-  mode: "A" as Mode,
+  mode: "B" as Mode,
   players: new Map<string, Player>(),
   effortTotal: 0,
   effortThreshold: 0,
   deadline: null as number | null,
+  questionIndex: null as number | null,
+  questionAdvanceAt: null as number | null,
 };
 
 /** Players who have a betta: the ones who can push walls and swim. */
@@ -75,6 +81,7 @@ function newPlayer(id: string): Player {
     lastSeen: Date.now(),
     phase: "waiting",
     answers: Array(QUESTION_COUNT).fill(null),
+    sharedInput: false,
     feed: [],
     feedDone: false,
     genome: null,
@@ -84,8 +91,32 @@ function newPlayer(id: string): Player {
 }
 
 function isDone(player: Player) {
-  // A = 30s feed, B = five dial pad answers.
-  return session.mode === "A" ? player.feedDone : player.answers.every((a) => a !== null);
+  return session.mode === "A" ? player.feedDone : player.genome !== null;
+}
+
+function sharedQuestion(): SharedQuestion | null {
+  const index = session.questionIndex;
+  if (index === null) return null;
+  const group = [...session.players.values()].filter((player) => player.sharedInput && player.socketId);
+  return { index, participants: group.length, answered: group.filter((player) => player.answers[index] !== null).length };
+}
+
+function currentQuestion(player: Player): PlayerQuestion | null {
+  if (session.mode !== "B" || player.phase !== "input" || player.genome) return null;
+  const index = player.sharedInput ? session.questionIndex : player.answers.indexOf(null);
+  if (index === null || index < 0) return null;
+  return { index, answered: player.answers[index] !== null, preview: genomeFromAnswers(player.answers) };
+}
+
+function nextQuestion() {
+  const index = session.questionIndex;
+  if (index === null) return;
+  session.questionAdvanceAt = null;
+  if (index + 1 >= QUESTION_COUNT) setStage("born");
+  else {
+    session.questionIndex = index + 1;
+    scheduleBroadcast();
+  }
 }
 
 /** Phase a player who is with the group should be in for the current stage. */
@@ -97,16 +128,35 @@ function phaseForStage(stage: Stage): Phase {
 }
 
 function setStage(stage: Stage) {
+  const wasQuestionnaire = session.questionIndex !== null;
   session.stage = stage;
   session.deadline = null;
+  session.questionAdvanceAt = null;
+  session.questionIndex = session.mode === "B" && stage === "input" ? 0 : null;
+
+  for (const player of session.players.values()) {
+    if (session.questionIndex !== null && player.socketId) {
+      player.answers.fill(null);
+      player.genome = null;
+      player.released = false;
+      player.sharedInput = true;
+    } else if (wasQuestionnaire && player.sharedInput) {
+      if (stage !== "lobby" && (player.socketId || player.answers.some((answer) => answer !== null))) {
+        player.genome = genomeFromAnswers(player.answers);
+      }
+      player.sharedInput = false;
+    } else if (stage !== "lobby" && player.phase === "input" && !player.genome) {
+      // Late arrivals keep their personal questionnaire as the room advances.
+      continue;
+    }
+    if (player.phase !== "fading" || stage === "input") player.phase = phaseForStage(stage);
+  }
+
   if (stage === "grid") {
     session.effortTotal = 0;
     session.effortThreshold = Math.max(1, withGenome().length) * TAPS_PER_PLAYER;
     session.deadline = Date.now() + GRID_TIMEOUT_MS;
     for (const player of session.players.values()) player.effort = 0;
-  }
-  for (const player of session.players.values()) {
-    if (player.phase !== "fading") player.phase = phaseForStage(stage);
   }
   console.log(`stage → ${stage}`);
   scheduleBroadcast();
@@ -125,11 +175,17 @@ function reset() {
 function runAdmin(command: AdminCommand) {
   switch (command.cmd) {
     case "setMode":
+      if (session.stage !== "lobby" || (command.mode !== "A" && command.mode !== "B")) break;
       session.mode = command.mode;
       console.log(`mode → ${command.mode}`);
       scheduleBroadcast();
       break;
     case "next": {
+      if (session.questionIndex !== null) {
+        if (command.question === undefined || command.question === session.questionIndex) nextQuestion();
+        break;
+      }
+      if (command.question !== undefined) break;
       const index = STAGES.indexOf(session.stage);
       if (index < STAGES.length - 1) setStage(STAGES[index + 1]);
       break;
@@ -163,6 +219,16 @@ function snapshot(): SessionState {
     })),
     effort: { total: Math.round(session.effortTotal), threshold: session.effortThreshold },
     deadline: session.deadline,
+    question: sharedQuestion(),
+  };
+}
+
+function snapshotForPhone(state: SessionState, player: Player): SessionState {
+  const question = currentQuestion(player);
+  if (!question) return state;
+  return {
+    ...state,
+    players: state.players.map((view) => view.id === player.id ? { ...view, question } : view),
   };
 }
 
@@ -201,7 +267,11 @@ function scheduleBroadcast() {
   if (broadcastTimer) return;
   broadcastTimer = setTimeout(() => {
     broadcastTimer = null;
-    io.emit("state", snapshot());
+    const state = snapshot();
+    for (const connection of io.sockets.sockets.values()) {
+      const player = playerOf(connection);
+      connection.emit("state", player ? snapshotForPhone(state, player) : state);
+    }
   }, BROADCAST_MS);
 }
 
@@ -240,7 +310,7 @@ io.on("connection", (socket) => {
     }
     player.socketId = socket.id;
     player.lastSeen = Date.now();
-    socket.emit("state", snapshot());
+    socket.emit("state", snapshotForPhone(snapshot(), player));
     scheduleBroadcast();
   });
 
@@ -251,15 +321,20 @@ io.on("connection", (socket) => {
 
   socket.on("answer", ({ q, value }) => {
     const player = playerOf(socket);
-    if (!player || q < 0 || q >= QUESTION_COUNT) return;
-    player.answers[q] = Math.min(10, Math.max(1, Math.round(value)));
-    if (player.answers.every((a) => a !== null)) player.genome = genomeFromAnswers(player.answers as number[]);
+    if (!player || player.socketId !== socket.id || !Number.isInteger(value) || value < 0 || value > 10) return;
+    const question = currentQuestion(player);
+    if (!question || q !== question.index || question.answered) return;
+    player.answers[q] = value;
+    if (!player.sharedInput && q === QUESTION_COUNT - 1) {
+      player.genome = genomeFromAnswers(player.answers);
+      player.phase = phaseForStage(session.stage);
+    }
     scheduleBroadcast();
   });
 
   socket.on("feed", ({ events, start, done }) => {
     const player = playerOf(socket);
-    if (!player || player.feedDone) return;
+    if (!player || player.feedDone || session.mode !== "A" || player.phase !== "input") return;
     if (start) player.feed = [];
     player.feed.push(...events.slice(0, 500));
     if (done) {
@@ -300,8 +375,9 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const player = playerOf(socket);
     if (!player || player.socketId !== socket.id) return;
-    // No betta yet: nothing to keep on screen, drop them now (a reload just rejoins).
-    if (!player.genome) {
+    // Keep dial progress across reconnects, even before the betta is complete.
+    const answering = session.mode === "B" && player.phase === "input";
+    if (!player.genome && !answering) {
       session.players.delete(player.id);
       console.log(`- phone ${player.id.slice(0, 6)} (dropped)`);
       scheduleBroadcast();
@@ -309,7 +385,7 @@ io.on("connection", (socket) => {
     }
     player.socketId = null;
     player.lastSeen = Date.now();
-    if (session.stage === "open") player.phase = "fading";
+    if (session.stage === "open" && player.genome) player.phase = "fading";
     console.log(`- phone ${player.id.slice(0, 6)}`);
     scheduleBroadcast();
   });
@@ -318,6 +394,15 @@ io.on("connection", (socket) => {
 // Grid stage: the shared push leaks away, and the walls come down on their own at the deadline.
 const TICK_MS = 250;
 setInterval(() => {
+  const question = sharedQuestion();
+  if (question) {
+    if (question.participants > 0 && question.answered === question.participants) {
+      session.questionAdvanceAt ??= Date.now() + ANSWER_REVEAL_MS;
+      if (Date.now() >= session.questionAdvanceAt) nextQuestion();
+    } else {
+      session.questionAdvanceAt = null;
+    }
+  }
   if (session.stage !== "grid") return;
   const pushing = withGenome().filter((p) => p.socketId).length;
   const leak = Math.max(1, pushing) * DECAY_PER_PLAYER * (TICK_MS / 1000);

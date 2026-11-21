@@ -5,6 +5,7 @@ type MaterialStyle = {
   saturation: number;
   finLength: number;
   pattern: number;
+  markings?: number;
   seed: number;
   filler: boolean;
 };
@@ -14,8 +15,9 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
   const uniforms = {
     bettaTime: time,
     bettaAtlas: { value: atlas },
-    bettaColor: { value: new Color().setHSL(style.hue, 0.58 + style.saturation * 0.29, 0.48, SRGBColorSpace) },
-    bettaStrength: { value: 0.44 + style.saturation * 0.43 },
+    bettaColor: { value: new Color().setHSL(style.hue, 0.68 + style.saturation * 0.29, 0.51, SRGBColorSpace) },
+    bettaAccent: { value: new Color().setHSL((style.hue + 0.58) % 1, 0.90, 0.52, SRGBColorSpace) },
+    bettaStrength: { value: (0.44 + style.saturation * 0.43) * (style.markings === undefined ? 1 : 0.68 + style.markings * 0.60) },
     bettaFinLength: { value: 0.72 + style.finLength * 0.4 },
     bettaFin: { value: Number(fin) },
     bettaPattern: { value: style.pattern },
@@ -23,8 +25,8 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
     bettaFiller: { value: Number(style.filler) },
   };
   const material = new MeshStandardMaterial({
-    roughness: fin ? 0.54 : 0.37,
-    metalness: style.filler ? 0 : 0.12,
+    roughness: 0.91,
+    metalness: 0,
     transparent: fin,
     depthWrite: !fin,
     side: fin ? DoubleSide : undefined,
@@ -57,6 +59,7 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         varying vec2 bettaUv;
         uniform sampler2D bettaAtlas;
         uniform vec3 bettaColor;
+        uniform vec3 bettaAccent;
         uniform float bettaStrength;
         uniform float bettaFin;
         uniform float bettaPattern;
@@ -98,16 +101,43 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         vec2 atlasUv = vec2(0.5 * bettaFin + 0.008 + bettaUv.x * 0.484, 0.02 + bettaUv.y * 0.96);
         vec3 atlasColor = texture2D(bettaAtlas, atlasUv).rgb;
         float mask = markings(bettaUv);
-        vec3 pigment = atlasColor * (0.19 + 1.04 * bettaColor);
-        vec3 albedo = mix(atlasColor, pigment, (0.14 + 0.86 * mask) * bettaStrength);
-        float gill = exp(-900.0 * pow(abs(bettaUv.x - 0.77 + sin(bettaUv.y * 6.28) * 0.049), 2.0));
-        albedo *= 1.0 - gill * (1.0 - bettaFin) * 0.18;
-        float gray = dot(atlasColor, vec3(0.2126, 0.7152, 0.0722));
-        diffuseColor.rgb *= mix(albedo, vec3(gray * 0.135), bettaFiller);
-        diffuseColor.a *= mix(1.0, 0.93 - smoothstep(0.13, 1.0, bettaUv.y) * 0.24, bettaFin);
+        float tooth = dot(atlasColor, vec3(0.28, 0.54, 0.18));
+        vec2 uv = bettaUv;
+        float wash = bettaNoise(uv * vec2(6., 3.) + bettaSeed * 17.);
+        vec3 paper = mix(vec3(.80,.60,.53), vec3(1.,.90,.79), smoothstep(.15,.85,tooth));
+        vec3 ink = vec3(.045,.008,.034) + bettaColor * .11;
+        vec3 paint = mix(paper, bettaColor, bettaStrength * (.24 + .76 * mask));
+        if (bettaFin > .5) {
+          // UVs run from the fin root to its scalloped edge. Split the ribbons
+          // along the rays so the printed marks bend with the membrane.
+          float ribbon = uv.y + .18*sin(uv.x*14.+bettaSeed*7.) + .13*(wash-.5);
+          paint = mix(paint, bettaColor, .82*smoothstep(.48,.54,ribbon));
+          float fold = uv.x*16. + .62*sin(uv.y*3.4+uv.x*8.) + wash*.65;
+          float streak = smoothstep(.63,.74,fract(fold*.39 + .24*sin(uv.y*6.))) * smoothstep(.43,.68,ribbon);
+          paint = mix(paint, bettaAccent, streak * (.48+.48*mask));
+          float line = abs(fract(fold)-.5);
+          float aa = clamp(fwidth(fold), .012, .50);
+          float ray = (1.-smoothstep(.018,.018+aa,line)) * (1.-smoothstep(.22,.49,aa));
+          paint = mix(paint, ink, ray * (.48+.48*wash));
+          paint = mix(paint, ink, .70*smoothstep(.974,1.,uv.y));
+        } else {
+          vec2 scales = uv*vec2(21.,12.);
+          scales.y += .5*mod(floor(scales.x),2.);
+          vec2 local = fract(scales)-.5;
+          float arc = abs(local.x-.19+local.y*local.y*1.9);
+          float aa = max(.035, fwidth(scales.x));
+          float stroke = (1.-smoothstep(.025,.025+aa,arc)) * (1.-smoothstep(.12,.48,aa));
+          float gill = abs(uv.x-.77+.035*sin(uv.y*6.283));
+          paint = mix(paint, ink, max(stroke*.53*(1.-smoothstep(.68,.84,uv.x)), .84*(1.-smoothstep(.005,.014,gill))));
+        }
+        diffuseColor.rgb *= mix(paint * (.86+.16*tooth), vec3(.027+.13*tooth), bettaFiller);
+        diffuseColor.a *= mix(1., .97-.07*uv.y, bettaFin);
       `)
       .replace("#include <opaque_fragment>", `
-        outgoingLight = mix(outgoingLight, vec3(dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722))), bettaFiller);
+        float contour = smoothstep(.06,.30,abs(normal.z));
+        vec3 printed = diffuseColor.rgb * mix(.36, 1.04, contour);
+        outgoingLight = mix(printed, outgoingLight, .16);
+        outgoingLight = mix(outgoingLight, vec3(dot(outgoingLight, vec3(.2126,.7152,.0722))*.65), bettaFiller);
         #include <opaque_fragment>
       `);
   };

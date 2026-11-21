@@ -1,0 +1,100 @@
+.root {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  justify-items: center;
+  gap: 16px;
+  padding: max(20px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom));
+  background: var(--water-paper);
+  color: #e6f1ee;
+}
+
+.question,
+.dial {
+  width: min(100%, 390px);
+}
+
+.scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #a5b9b6;
+  font-size: 12px;
+}
+
+.scale b {
+  color: #d6eee7;
+  font-family: var(--font-mono);
+}
+
+.preview {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+}
+
+.formation {
+  transition: opacity 450ms ease, transform 450ms ease;
+}
+
+.feedback {
+  margin: 6px 0 0;
+  color: #9ac5ba;
+  text-align: center;
+  font-size: 12px;
+}
+
+.keys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.keys button:disabled {
+  opacity: 0.35;
+}
+
+.keys .action,
+.keys .send {
+  font: 600 14px var(--font-sans);
+}
+
+.progress {
+  margin: 0 0 6px;
+  font: 13px var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--shell);
+  letter-spacing: .13em;
+}
+.progress::after { content: ""; flex: 1; border-top: 1px solid var(--glass-line); }
+.question h1 {
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  font-size: clamp(20px, 5.6vw, 27px);
+  line-height: 1.35;
+  word-break: keep-all; margin-top: 15px; font-family: var(--display-serif); font-weight: 500; color: var(--pearl); }
+.scale, .feedback { color: #c0cddd; }
+.scale b, .value { color: var(--shell); }
+.value {
+  display: grid;
+  min-height: 47px;
+  place-items: center;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #294440;
+  color: #d7fff4; border-color: var(--glass-line); font: italic 30px var(--display-serif); }
+.keys button {
+  min-height: 46px;
+  border: 1px solid #27403f;
+  touch-action: manipulation;
+  border-color: var(--glass-line);
+  border-radius: 40% / 50%;
+  background: #0c1424db;
+  color: var(--pearl);
+  font: 24px var(--display-serif);
+}
+.keys button:active:enabled { background: #364460; }
+.keys .send { background: var(--shell); color: #2a1928; border-color: var(--shell); }
+.keys button:focus-visible { outline: 2px solid var(--pearl); outline-offset: 2px; }

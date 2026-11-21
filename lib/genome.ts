@@ -50,10 +50,19 @@ export function genomeFromFeed(events: FeedEvent[]): Genome {
   return { hue, saturation: clamp(saturation), finLength, boundary: clamp(boundary), sociability: clamp(sociability) };
 }
 
-/** Mode B: the five 1–10 answers, one per axis, in Genome key order. */
-export function genomeFromAnswers(answers: number[]): Genome {
-  const v = (i: number) => clamp(((answers[i] ?? 5.5) - 1) / 9);
-  return { hue: v(0), saturation: v(1), finLength: v(2), boundary: v(3), sociability: v(4) };
+/** Each dial answer changes one visible or behavioral trait. Skipped items stay neutral. */
+export function genomeFromAnswers(answers: readonly (number | null)[]): Genome {
+  const v = (i: number) => clamp((answers[i] ?? 5) / 10);
+  return {
+    saturation: v(0),
+    finLength: v(1),
+    hue: 0.62 - v(2) * 0.59,
+    markings: v(3),
+    boundary: v(4),
+    sociability: v(5),
+    reactivity: v(6),
+    glide: v(7),
+  };
 }
 
 /** Euclidean distance in the 5 axes (hue taken around the circle), 0 … ~2.2. */

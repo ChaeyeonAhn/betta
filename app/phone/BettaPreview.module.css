@@ -14,7 +14,7 @@
 
 .label {
   margin-top: 2px;
-  color: #8a8a8a;
+  color: var(--silver);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.05em;

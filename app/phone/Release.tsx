@@ -47,7 +47,7 @@ export function Release({ genome, playerId, tag, released, onRelease }: {
         setDrag(0);
       }}
     >
-      <p className={styles.top}>{gone ? "look up." : "your betta is born."}</p>
+      <p className={styles.top}>{gone ? "큰 화면에서 내 베타를 찾아보세요." : "나의 베타가 태어났어요."}</p>
 
       <div className={`${styles.fish} ${gone ? styles.gone : ""}`} style={gone ? undefined : { transform: `translateY(${drag}px)` }}>
         <BettaPreview genome={genome} playerId={playerId} tag={tag} width={260} />
@@ -55,7 +55,7 @@ export function Release({ genome, playerId, tag, released, onRelease }: {
 
       {!gone && (
         <button className={styles.button} onClick={release}>
-          ↑ swipe up to release
+          ↑ 위로 밀어 보내기
         </button>
       )}
     </main>

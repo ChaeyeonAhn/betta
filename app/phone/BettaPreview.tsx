@@ -11,7 +11,7 @@ const PreviewScene = dynamic(() => import("./BettaPreviewScene").then((module) =
 export function BettaPreview({ genome, playerId, tag, width }: {
   genome: Genome;
   playerId: string;
-  tag: string;
+  tag?: string;
   width: number;
 }) {
   return (
@@ -19,7 +19,7 @@ export function BettaPreview({ genome, playerId, tag, width }: {
       <div className={styles.viewport}>
         <PreviewScene genome={genome} playerId={playerId} width={width} />
       </div>
-      <figcaption className={styles.label}>{tag}</figcaption>
+      {tag && <figcaption className={styles.label}>{tag}</figcaption>}
     </figure>
   );
 }
