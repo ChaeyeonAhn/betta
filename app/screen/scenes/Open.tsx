@@ -28,7 +28,8 @@ import { createEncounters } from "./encounters";
 import { createGridLayout, projectedFishCenter, STAGE_H, STAGE_W } from "./gridLayout";
 import styles from "./Open.module.css";
 import { swimmingPitch } from "./swimmingPitch";
-import { advanceWater, projectTankPoint, TANK_CAMERA_DISTANCE, TANK_DEPTH, waterAt, type WaterCurrent } from "./waterCurrent";
+import { advanceWater, advanceWakes, createWaterCurrent, projectTankPoint, TANK_CAMERA_DISTANCE, TANK_DEPTH, waterAt, type WaterCurrent } from "./waterCurrent";
+import { CurrentTraces } from "./CurrentTraces";
 import { WaterTank } from "./WaterTank";
 
 const FISH = 150; // BettaShape width in the tank
@@ -70,7 +71,7 @@ export function Open({ players, gridSize, socket }: {
   const els = useRef(new Map<string, HTMLDivElement>());
   const flips = useRef(new Map<string, HTMLDivElement>());
   const steers = useRef(new Map<string, Steer & { at: number }>());
-  const current = useRef<WaterCurrent>({ x: 0, y: 0, offsetX: 0, offsetY: 0, time: 0 });
+  const current = useRef<WaterCurrent>(createWaterCurrent());
 
   // Keep the sim in step with who has a betta. New fish start in their grid
   // cell and drift out of it as the grid fades (Screen.tsx); late fish enter from an edge.
@@ -117,6 +118,7 @@ export function Open({ players, gridSize, socket }: {
       if (all.length < fishCount) encounters.prune(fish.current);
       fishCount = all.length;
       advanceWater(current.current, fish.current.values(), dt);
+      advanceWakes(current.current, all, dt);
       for (const [id, f] of all) {
         let ax = 0;
         let ay = 0;
@@ -176,7 +178,7 @@ export function Open({ players, gridSize, socket }: {
           f.vy *= MAX_SPEED / speed;
         }
         const before = projectTankPoint(f.x, f.y, f.depth);
-        const water = waterAt(current.current, f.x, f.y, f.depth);
+        const water = waterAt(current.current, f.x, f.y, f.depth, id);
         f.x = MathUtils.clamp(f.x + (f.vx + water.x) * dt, 30, STAGE_W - 30);
         f.y = MathUtils.clamp(f.y + (f.vy + water.y) * dt, 26, STAGE_H - 26);
         f.depth = MathUtils.clamp(f.depth + ((f.preferredDepth - f.depth) * 0.28 + water.depth) * dt, 0, TANK_DEPTH - 60);
@@ -210,6 +212,7 @@ export function Open({ players, gridSize, socket }: {
     <section className={styles.root}>
       <BettaVisual fallback={null}>
         <BettaCanvas distance={TANK_CAMERA_DISTANCE} scenery={<WaterTank current={current} />}>
+          <CurrentTraces current={current} sources={fish} />
           {bettas.map((p) => <OpenBetta key={p.id} id={p.id} genome={p.genome!} fish={fish} />)}
         </BettaCanvas>
       </BettaVisual>
