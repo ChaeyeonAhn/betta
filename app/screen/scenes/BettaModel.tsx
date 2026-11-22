@@ -10,8 +10,12 @@ import { BODY_REST_PITCH, body, eyeball, fins, pairedFins } from "./bettaMesh";
 const ATLAS = "/betta-uv.webp";
 const eye = new MeshStandardMaterial({ color: "#110c25", roughness: 0.22 });
 const eyeRim = new MeshStandardMaterial({ color: "#9d82dc", roughness: 0.38 });
-/** Another betta's colour this one carries: `u` along the body (0 tail … 1 nose), `v` toward the back, `at` = performance.now() when it was given. */
-export type BettaMark = { hue: number; saturation: number; u: number; v: number; at: number };
+/**
+ * Another betta's colour this one carries: `u` along the body (0 tail … 1 nose),
+ * `v` toward the back, `size` (1 = a fleck; grows while they stay together),
+ * `at` = performance.now() when it appeared.
+ */
+export type BettaMark = { hue: number; saturation: number; u: number; v: number; size: number; at: number };
 const MARK_FADE_MS = 1800;
 
 const SWIMS = [
@@ -91,7 +95,7 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
           continue;
         }
         if (slot.z === 0) bettaBodyColor(mark.hue, mark.saturation, skin.uniforms.bettaMarkColors.value[i]);
-        slot.set(mark.u, mark.v, Math.min(1, Math.max(0.001, (now - mark.at) / MARK_FADE_MS)));
+        slot.set(mark.u, mark.v, Math.min(1, Math.max(0.001, (now - mark.at) / MARK_FADE_MS)), mark.size);
       }
     }
     if (growth !== undefined && scaled.current) {

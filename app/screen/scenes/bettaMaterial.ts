@@ -1,7 +1,7 @@
-import { Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace, Vector3, type Texture } from "three";
+import { Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace, Vector4, type Texture } from "three";
 
-/** Patches of another betta's colour a body can carry (open stage, after swimming together). */
-export const MAX_MARKS = 4;
+/** Patches of other bettas' colour a body can carry (open stage, from swimming together). */
+export const MAX_MARKS = 8;
 
 /** A betta's body colour; also what it leaves on the bettas it swims with. */
 export const bettaBodyColor = (hue: number, saturation: number, target = new Color()) =>
@@ -22,8 +22,8 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
     bettaTime: time,
     bettaAtlas: { value: atlas },
     bettaColor: { value: bettaBodyColor(style.hue, style.saturation) },
-    /** Per mark: x = place along the body (0 tail … 1 nose), y = shift toward the back, z = how far it has come in (0 = none). */
-    bettaMarks: { value: Array.from({ length: MAX_MARKS }, () => new Vector3()) },
+    /** Per mark: x = place along the body (0 tail … 1 nose), y = shift toward the back, z = how far it has come in (0 = none), w = size (1 = a fleck). */
+    bettaMarks: { value: Array.from({ length: MAX_MARKS }, () => new Vector4()) },
     bettaMarkColors: { value: Array.from({ length: MAX_MARKS }, () => new Color()) },
     bettaAccent: { value: new Color().setHSL((style.hue + 0.58) % 1, 0.90, 0.52, SRGBColorSpace) },
     bettaStrength: { value: 0.44 + style.saturation * 0.43 },
@@ -81,7 +81,7 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         uniform float bettaPattern;
         uniform float bettaSeed;
         uniform float bettaFiller;
-        uniform vec3 bettaMarks[${MAX_MARKS}];
+        uniform vec4 bettaMarks[${MAX_MARKS}];
         uniform vec3 bettaMarkColors[${MAX_MARKS}];
         varying float bettaFade;
 
@@ -143,10 +143,10 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
           // Another betta's colour, a small ragged patch on both flanks
           // (the body's sides sit at v = .25 and .75; the back at .5).
           for (int i = 0; i < ${MAX_MARKS}; i++) {
-            vec3 mark = bettaMarks[i];
+            vec4 mark = bettaMarks[i];
             if (mark.z <= 0.) continue;
-            float mx = (uv.x - mark.x) / .09;
-            float my = min(abs(uv.y - (.75 - mark.y)), abs(uv.y - (.25 + mark.y))) / .12;
+            float mx = (uv.x - mark.x) / (.09 * mark.w);
+            float my = min(abs(uv.y - (.75 - mark.y)), abs(uv.y - (.25 + mark.y))) / (.12 * mark.w);
             float rag = (bettaNoise(uv * vec2(38., 30.) + float(i) * 5.3 + bettaSeed * 11.) - .5) * .6;
             float blob = 1. - smoothstep(.5, 1., length(vec2(mx, my)) + rag);
             paint = mix(paint, mix(paper, bettaMarkColors[i], .88), blob * mark.z);

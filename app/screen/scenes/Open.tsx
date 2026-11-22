@@ -8,8 +8,9 @@
 //   sociability  pull towards (and matching speed with) fish with a similar genome
 //   walls        soft push back from the stage edges
 // No fighting: relations show only as drifting together or keeping distance.
-// Meetings (encounters.ts): two that swim together for a while each take a
-// small patch of the other's colour; two that collide are knocked apart.
+// Meetings (encounters.ts): two that swim together take on each other's colour,
+// a fleck at first, then more and larger patches the longer they stay;
+// two that collide are knocked apart.
 // Positions live in refs shared by the WebGL tank and the screen-space tags.
 
 import { Hint } from "@/app/_components/Hint";
@@ -38,6 +39,11 @@ const SIMILAR = 0.7; // genomeDistance below this = "like me"
 /** A collision throws both fish apart this fast (px/s); it dies away at KNOCK_DECAY per second. */
 const KNOCK = 420;
 const KNOCK_DECAY = 3.2;
+/** Swimming together: another patch of the partner's colour every this many seconds, */
+const SPREAD_S = 8;
+/** while each of that partner's patches grows this much per second, up to MARK_MAX_SIZE (1 = the first fleck). */
+const MARK_GROW = 0.03;
+const MARK_MAX_SIZE = 1.7;
 const STEER_STALE_MS = 800;
 
 type Fish = {
@@ -47,7 +53,9 @@ type Fish = {
   /** Knock-back from a collision, on top of swimming: shoves the body without turning it. */
   kx: number; ky: number;
   /** Colour patches from the bettas it swam with. */
-  marks: BettaMark[];
+  marks: (BettaMark & { from: string })[];
+  /** Seconds spent swimming with each other betta, by id. */
+  bonds: Map<string, number>;
 };
 
 export function Open({ players, gridSize, socket }: {
@@ -81,7 +89,7 @@ export function Open({ players, gridSize, socket }: {
     fish.current.set(p.id, {
       x: c.x, y: c.y, depth: firstFrame ? 0 : preferredDepth, preferredDepth,
       vx, vy, screenVx: vx, screenVy: vy, wander: Math.random() * Math.PI * 2,
-      dir: vx < 0 ? -1 : 1, genome: p.genome!, kx: 0, ky: 0, marks: [],
+      dir: vx < 0 ? -1 : 1, genome: p.genome!, kx: 0, ky: 0, marks: [], bonds: new Map(),
     });
   });
   for (const id of fish.current.keys()) if (!bettas.some((p) => p.id === id)) fish.current.delete(id);
@@ -139,8 +147,8 @@ export function Open({ players, gridSize, socket }: {
             o.kx += (dx / flat) * KNOCK;
             o.ky += (dy / flat) * KNOCK;
           } else if (met === "together") {
-            mark(f, o.genome, now);
-            mark(o, g, now);
+            takeOn(f, otherId, o.genome, dt, now);
+            takeOn(o, id, g, dt, now);
           }
           if (d < personal) {
             const push = (1 - d / personal) * 420 * (0.5 + g.boundary);
@@ -232,10 +240,24 @@ export function Open({ players, gridSize, socket }: {
   );
 }
 
-/** A small patch of `from`'s colour somewhere on the middle of the body. */
-function mark(fish: Fish, from: Genome, now: number) {
-  if (fish.marks.length >= MAX_MARKS) return;
-  fish.marks.push({ hue: from.hue, saturation: from.saturation, u: 0.3 + Math.random() * 0.38, v: (Math.random() - 0.5) * 0.16, at: now });
+/**
+ * One frame of swimming with `partner`: the first moment leaves a fleck of its
+ * colour, every SPREAD_S together adds another, and all of its patches keep
+ * growing. Patches stay when they part; meeting again picks up where they left off.
+ */
+function takeOn(fish: Fish, partner: string, genome: Genome, dt: number, now: number) {
+  const before = fish.bonds.get(partner) ?? 0;
+  const after = before + dt;
+  fish.bonds.set(partner, after);
+  if ((before === 0 || Math.floor(after / SPREAD_S) > Math.floor(before / SPREAD_S)) && fish.marks.length < MAX_MARKS) {
+    fish.marks.push({
+      from: partner, hue: genome.hue, saturation: genome.saturation,
+      u: 0.3 + Math.random() * 0.38, v: (Math.random() - 0.5) * 0.16, size: 1, at: now,
+    });
+  }
+  for (const mark of fish.marks) {
+    if (mark.from === partner) mark.size = Math.min(MARK_MAX_SIZE, mark.size + MARK_GROW * dt);
+  }
 }
 
 function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: RefObject<Map<string, Fish>> }) {

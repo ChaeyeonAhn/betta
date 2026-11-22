@@ -5,7 +5,8 @@
 //             and Open knocks them apart
 //   near      they drift close: a low gulp (bubble-gulp)
 //   together  they swim side by side, heading the same way, for a while:
-//             Open gives each a small patch of the other's colour (once per pair)
+//             reported every frame it lasts, and Open lets each take on more
+//             and more of the other's colour
 // Sound pitch follows the pair's fins (longer = lower), pan where they are on
 // the stage, and depth makes it quieter.
 
@@ -35,9 +36,11 @@ const ALIGNED = 0.75;
 const MOVING = 25;
 /** for this long in total; time apart drains it at half speed. */
 const TOGETHER_S = 2.5;
+/** Banked time stops here, so a pair that parts after a long swim needs only a short one to be together again. */
+const TOGETHER_CAP_S = TOGETHER_S + 1;
 
 type Fish = { x: number; depth: number; vx: number; vy: number; genome: Genome };
-type Pair = { near: boolean; bump: boolean; nearQuiet: number; bumpQuiet: number; together: number; shared: boolean };
+type Pair = { near: boolean; bump: boolean; nearQuiet: number; bumpQuiet: number; together: number };
 export type Encounter = "bump" | "together" | null;
 
 export function createEncounters(start: number) {
@@ -67,7 +70,7 @@ export function createEncounters(start: number) {
       const p = pairs.get(key);
       if (!p) {
         // First sight: take the pair as it is, without an event.
-        pairs.set(key, { near: d < NEAR, bump: d < BUMP, nearQuiet: 0, bumpQuiet: 0, together: 0, shared: false });
+        pairs.set(key, { near: d < NEAR, bump: d < BUMP, nearQuiet: 0, bumpQuiet: 0, together: 0 });
         return null;
       }
       const listening = now - start > SETTLE_MS;
@@ -92,16 +95,11 @@ export function createEncounters(start: number) {
         }
       } else if (p.near && d > NEAR_REARM) p.near = false;
 
-      if (!p.shared) {
-        const sa = Math.hypot(a.vx, a.vy);
-        const sb = Math.hypot(b.vx, b.vy);
-        const aligned = sa > MOVING && sb > MOVING && (a.vx * b.vx + a.vy * b.vy) / (sa * sb) > ALIGNED;
-        p.together = d < TOGETHER && aligned ? p.together + dt : Math.max(0, p.together - dt * 0.5);
-        if (listening && !event && p.together > TOGETHER_S) {
-          p.shared = true;
-          event = "together";
-        }
-      }
+      const sa = Math.hypot(a.vx, a.vy);
+      const sb = Math.hypot(b.vx, b.vy);
+      const alongside = d < TOGETHER && sa > MOVING && sb > MOVING && (a.vx * b.vx + a.vy * b.vy) / (sa * sb) > ALIGNED;
+      p.together = alongside ? Math.min(TOGETHER_CAP_S, p.together + dt) : Math.max(0, p.together - dt * 0.5);
+      if (listening && !event && alongside && p.together > TOGETHER_S) event = "together";
       return event;
     },
     /** Forget pairs whose fish have left. */
