@@ -25,6 +25,7 @@ import { BANNER_MS, NOTICES, POSTS, noticeSchedule, type CardAction, type Notice
 import { genomeFromFeed } from "@/lib/genome";
 import { FEED_MS, type FeedEvent } from "@/lib/protocol";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
+import { loadSound, playSound } from "@/app/_components/sound";
 import { BettaPreview } from "../BettaPreview";
 import styles from "./FakeFeed.module.css";
 
@@ -45,6 +46,9 @@ type FeedPost = (typeof POSTS)[number] & { key: string };
 const feedPage = (page: number): FeedPost[] => POSTS.map((post, i) => ({ ...post, key: `${post.id}-${page}-${i}` }));
 /** Load another round of posts this close to the bottom. */
 const MORE_PX = 1200;
+
+/** Every button press in the app pops bubbles (octave-up render for phone speakers). */
+const TAP_SOUND = "/audio/bubbles/bubble-cluster-phone.mp3";
 
 const ACTION_LABEL: Record<CardAction, string> = { like: "♡ Like", accept: "Accept", decline: "Decline", reply: "Reply" };
 
@@ -202,8 +206,22 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
     };
   }, [send, log, dismiss]);
 
+  const tapSound = useRef<AudioBuffer | null>(null);
+  useEffect(() => {
+    loadSound(TAP_SOUND)
+      .then((buffer) => { tapSound.current = buffer; })
+      .catch((error) => console.warn("[betta] tap sound failed to load", error));
+  }, []);
+  /** Bubbles from where the finger is, a little different each time. */
+  const pop = () => {
+    if (!tapSound.current) return;
+    const x = touchRef.current?.x ?? window.innerWidth / 2;
+    playSound(tapSound.current, { rate: 1 + Math.random() * 0.2, gain: 0.8, pan: (x / window.innerWidth - 0.5) });
+  };
+
   // News about you ends with the tap; a notice that asks something opens its card.
   const openBanner = (banner: Banner) => {
+    pop();
     if (card) log({ kind: "close", tag: card.tag });
     log({ kind: "tap", tag: banner.notice.tag });
     dismiss(banner.key);
@@ -211,12 +229,14 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
   };
 
   const swipeBanner = (banner: Banner) => {
+    pop();
     log({ kind: "ignore", tag: banner.notice.tag });
     dismiss(banner.key);
   };
 
   const react = (action: CardAction | "close") => {
     if (!card) return;
+    pop();
     log({ kind: action, tag: card.tag });
     setCard(null);
   };
@@ -226,6 +246,7 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
 
   const like = (post: FeedPost) => {
     if (liked.has(post.key)) return;
+    pop();
     log({ kind: "like", tag: post.tag });
     setLiked((set) => new Set(set).add(post.key));
   };
@@ -265,6 +286,7 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
           <button
             className={styles.postButton}
             onClick={() => {
+              pop();
               log({ kind: "post", tag: "self" });
               setPosted(true);
             }}

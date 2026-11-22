@@ -41,10 +41,29 @@ export function loadSound(url: string): Promise<AudioBuffer> {
   return buffer;
 }
 
-/** Fire and forget. rate also shifts pitch (2 = an octave up); pan is -1 … 1. */
-export function playSound(buffer: AudioBuffer, { rate = 1, gain = 1, pan = 0 } = {}) {
+/** Late resumes play only if they come this soon; anything older is dropped, not stacked up. */
+const RESUME_GRACE_MS = 200;
+
+/**
+ * Fire and forget. rate also shifts pitch (2 = an octave up); pan is -1 … 1.
+ * Called from a tap while audio is still locked, it unlocks and plays that same
+ * tap (so the first button press is heard too).
+ */
+export function playSound(buffer: AudioBuffer, options: { rate?: number; gain?: number; pan?: number } = {}) {
   const c = audioContext();
-  if (c.state !== "running" || voices >= MAX_VOICES) return;
+  if (c.state === "running") start(c, buffer, options);
+  else if (c.state === "suspended") {
+    const asked = performance.now();
+    c.resume()
+      .then(() => {
+        if (performance.now() - asked < RESUME_GRACE_MS) start(c, buffer, options);
+      })
+      .catch(() => {});
+  }
+}
+
+function start(c: AudioContext, buffer: AudioBuffer, { rate = 1, gain = 1, pan = 0 }) {
+  if (voices >= MAX_VOICES) return;
   const source = c.createBufferSource();
   source.buffer = buffer;
   source.playbackRate.value = rate;
