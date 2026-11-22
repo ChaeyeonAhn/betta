@@ -20,6 +20,7 @@ import { genomeDistance } from "@/lib/genome";
 import type { Genome, PlayerView, Steer } from "@/lib/protocol";
 import { BettaCanvas, BettaVisual, stagePoint } from "./BettaCanvas";
 import { BettaModel } from "./BettaModel";
+import { createBubbleEvents } from "./bubbleEvents";
 import { createGridLayout, projectedFishCenter, STAGE_H, STAGE_W } from "./gridLayout";
 import styles from "./Open.module.css";
 import { swimmingPitch } from "./swimmingPitch";
@@ -89,10 +90,14 @@ export function Open({ players, gridSize, socket }: {
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
+    const bubbles = createBubbleEvents(last);
+    let fishCount = 0;
     const tick = (now: number) => {
       const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
       last = now;
       const all = [...fish.current.entries()];
+      if (all.length < fishCount) bubbles.prune(fish.current);
+      fishCount = all.length;
       advanceWater(current.current, fish.current.values(), dt);
       for (const [id, f] of all) {
         let ax = 0;
@@ -116,6 +121,7 @@ export function Open({ players, gridSize, socket }: {
           const dx = o.x - f.x;
           const dy = o.y - f.y;
           const d = Math.hypot(dx, dy, (o.depth - f.depth) * 0.65) || 1;
+          if (id < otherId) bubbles.pair(now, id, f, otherId, o, d);
           if (d < personal) {
             const push = (1 - d / personal) * 420 * (0.5 + g.boundary);
             ax -= (dx / d) * push;

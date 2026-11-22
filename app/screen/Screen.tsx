@@ -8,6 +8,7 @@ import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import { Grid } from "./scenes/Grid";
 import { Open } from "./scenes/Open";
 import { STAGE_H, STAGE_W } from "./scenes/gridLayout";
+import { useAmbience } from "./useAmbience";
 import styles from "./screen.module.css";
 
 const GRID_FADE_MS = 2200;
@@ -29,6 +30,8 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
   const [hud, setHud] = useState(true);
   const [joinUrl, setJoinUrl] = useState("");
   const projection = useProjectionScale();
+  // The tank hum runs under every stage, from the lobby on.
+  useAmbience(true);
 
   useEffect(() => {
     const query = `/phone?room=${encodeURIComponent(room)}`;

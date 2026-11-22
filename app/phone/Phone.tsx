@@ -5,6 +5,7 @@ import { useBetta } from "@/hooks/useBetta";
 import { getPlayerId, shortTag } from "@/lib/playerId";
 import type { FeedEvent, Hello, Steer } from "@/lib/protocol";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
+import { unlockAudio } from "@/app/_components/sound";
 import { BettaCard } from "./card/BettaCard";
 import { Joystick } from "./controls/Joystick";
 import { FakeFeed } from "./modes/FakeFeed";
@@ -17,6 +18,8 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   // The id lives in localStorage, so it can only be read after mount.
   const [hello, setHello] = useState<Hello | null>(null);
   useEffect(() => setHello({ role: "phone", room, playerId: getPlayerId() }), [room]);
+  // Taps in the feed and the release swipe unlock audio before the cell needs it.
+  useEffect(unlockAudio, []);
 
   const { state, connected, rejected, socket } = useBetta(hello, socketUrl);
   const me = state?.players.find((p) => hello?.role === "phone" && p.id === hello.playerId);

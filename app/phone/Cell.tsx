@@ -15,6 +15,7 @@ import { GridTank } from "@/app/screen/scenes/GridTank";
 import type { PlayerView, SessionState } from "@/lib/protocol";
 import styles from "./Cell.module.css";
 import { useDeviceLook } from "./useDeviceLook";
+import { useTurnBubbles } from "./useTurnBubbles";
 
 export function Cell({ state, me, slot, onPush }: {
   state: SessionState;
@@ -34,6 +35,7 @@ export function Cell({ state, me, slot, onPush }: {
       navigator.vibrate?.(8); // Android only; iOS Safari ignores it
     } : undefined,
   });
+  useTurnBubbles(look);
   const share = state.effort.threshold ? Math.min(1, state.effort.total / state.effort.threshold) : 0;
 
   return (
