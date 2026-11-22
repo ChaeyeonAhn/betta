@@ -1,9 +1,13 @@
 "use client";
 
-// Open stage sound: two bettas bumping into each other set off a burst of
-// bubbles (bubble-cluster); two drifting close make a low gulp. Pitch follows
-// the pair's fins (longer = lower), pan where they are on the stage, and depth
-// makes it quieter.
+// Open stage: what happens when two bettas meet.
+//   bump      they run into each other: a burst of bubbles (bubble-cluster),
+//             and Open knocks them apart
+//   near      they drift close: a low gulp (bubble-gulp)
+//   together  they swim side by side, heading the same way, for a while:
+//             Open gives each a small patch of the other's colour (once per pair)
+// Sound pitch follows the pair's fins (longer = lower), pan where they are on
+// the stage, and depth makes it quieter.
 
 import { loadSound, playSound } from "@/app/_components/sound";
 import type { Genome } from "@/lib/protocol";
@@ -24,10 +28,19 @@ const MAX_PER_SECOND = 3;
 /** Fish leave the grid packed together: listen only once they've spread out. */
 const SETTLE_MS = 3000;
 
-type Fish = { x: number; depth: number; genome: Genome };
-type Pair = { near: boolean; bump: boolean; nearQuiet: number; bumpQuiet: number };
+/** Swimming together: within this distance (past the widest personal space), */
+const TOGETHER = 300;
+/** headings this close (cosine), both actually moving, */
+const ALIGNED = 0.75;
+const MOVING = 25;
+/** for this long in total; time apart drains it at half speed. */
+const TOGETHER_S = 2.5;
 
-export function createBubbleEvents(start: number) {
+type Fish = { x: number; depth: number; vx: number; vy: number; genome: Genome };
+type Pair = { near: boolean; bump: boolean; nearQuiet: number; bumpQuiet: number; together: number; shared: boolean };
+export type Encounter = "bump" | "together" | null;
+
+export function createEncounters(start: number) {
   const sounds = Promise.all([loadSound(CLUSTER), loadSound(GULP)]);
   sounds.catch((error) => console.warn("[betta] bubble sounds failed to load", error));
   const pairs = new Map<string, Pair>();
@@ -48,21 +61,26 @@ export function createBubbleEvents(start: number) {
   };
 
   return {
-    /** Call once per pair per frame, with idA < idB, and the distance between them. */
-    pair(now: number, idA: string, a: Fish, idB: string, b: Fish, d: number) {
+    /** Call once per pair per frame, with idA < idB and the distance between them. */
+    pair(now: number, dt: number, idA: string, a: Fish, idB: string, b: Fish, d: number): Encounter {
       const key = `${idA}|${idB}`;
-      let p = pairs.get(key);
+      const p = pairs.get(key);
       if (!p) {
-        // First sight: take the pair as it is, without a sound.
-        pairs.set(key, { near: d < NEAR, bump: d < BUMP, nearQuiet: 0, bumpQuiet: 0 });
-        return;
+        // First sight: take the pair as it is, without an event.
+        pairs.set(key, { near: d < NEAR, bump: d < BUMP, nearQuiet: 0, bumpQuiet: 0, together: 0, shared: false });
+        return null;
       }
       const listening = now - start > SETTLE_MS;
+      let event: Encounter = null;
+
       if (!p.bump && d < BUMP) {
         p.bump = true;
-        if (listening && now > p.bumpQuiet) {
-          p.bumpQuiet = now + PAIR_COOLDOWN_MS;
-          play(now, "bump", a, b);
+        if (listening) {
+          event = "bump";
+          if (now > p.bumpQuiet) {
+            p.bumpQuiet = now + PAIR_COOLDOWN_MS;
+            play(now, "bump", a, b);
+          }
         }
       } else if (p.bump && d > BUMP_REARM) p.bump = false;
 
@@ -73,6 +91,18 @@ export function createBubbleEvents(start: number) {
           play(now, "near", a, b);
         }
       } else if (p.near && d > NEAR_REARM) p.near = false;
+
+      if (!p.shared) {
+        const sa = Math.hypot(a.vx, a.vy);
+        const sb = Math.hypot(b.vx, b.vy);
+        const aligned = sa > MOVING && sb > MOVING && (a.vx * b.vx + a.vy * b.vy) / (sa * sb) > ALIGNED;
+        p.together = d < TOGETHER && aligned ? p.together + dt : Math.max(0, p.together - dt * 0.5);
+        if (listening && !event && p.together > TOGETHER_S) {
+          p.shared = true;
+          event = "together";
+        }
+      }
+      return event;
     },
     /** Forget pairs whose fish have left. */
     prune(alive: { has(id: string): boolean }) {

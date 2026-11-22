@@ -4,12 +4,16 @@ import { useFrame, useLoader } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { type Group, MathUtils, MeshStandardMaterial, SRGBColorSpace, TextureLoader } from "three";
 import type { Genome } from "@/lib/protocol";
-import { createBettaMaterial } from "./bettaMaterial";
+import { bettaBodyColor, createBettaMaterial, MAX_MARKS } from "./bettaMaterial";
 import { BODY_REST_PITCH, body, eyeball, fins, pairedFins } from "./bettaMesh";
 
 const ATLAS = "/betta-uv.webp";
 const eye = new MeshStandardMaterial({ color: "#110c25", roughness: 0.22 });
 const eyeRim = new MeshStandardMaterial({ color: "#9d82dc", roughness: 0.38 });
+/** Another betta's colour this one carries: `u` along the body (0 tail … 1 nose), `v` toward the back, `at` = performance.now() when it was given. */
+export type BettaMark = { hue: number; saturation: number; u: number; v: number; at: number };
+const MARK_FADE_MS = 1800;
+
 const SWIMS = [
   { travel: 0.16, drift: 0.49, roll: 0.05, turn: 0.13, pulse: 1.0 }, // hover
   { travel: 0.36, drift: 0.70, roll: 0.11, turn: 0.32, pulse: 0.76 }, // slow glide
@@ -31,14 +35,16 @@ export function useBettaAtlas() {
  * shorter fins, paler colour. Eases toward the value it is given.
  * `calm`: "drift" glides slowly side to side, level, fins at rest (the card);
  * "still" holds that level side view without moving (the card's picture).
+ * `marks`: read every frame; patches of other bettas' colour on the body.
  */
-export function BettaModel({ genome, seed, size, followHeading = false, growth, calm }: {
+export function BettaModel({ genome, seed, size, followHeading = false, growth, calm, marks }: {
   genome: Genome;
   seed: string;
   size: number;
   followHeading?: boolean;
   growth?: number;
   calm?: "drift" | "still";
+  marks?: () => readonly BettaMark[] | undefined;
 }) {
   const fish = useRef<Group>(null);
   const scaled = useRef<Group>(null);
@@ -74,6 +80,20 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
 
   useFrame(({ clock }, delta) => {
     if (!fish.current) return;
+    if (marks) {
+      const list = marks() ?? [];
+      const now = performance.now();
+      for (let i = 0; i < MAX_MARKS; i++) {
+        const mark = list[i];
+        const slot = skin.uniforms.bettaMarks.value[i];
+        if (!mark) {
+          slot.z = 0;
+          continue;
+        }
+        if (slot.z === 0) bettaBodyColor(mark.hue, mark.saturation, skin.uniforms.bettaMarkColors.value[i]);
+        slot.set(mark.u, mark.v, Math.min(1, Math.max(0.001, (now - mark.at) / MARK_FADE_MS)));
+      }
+    }
     if (growth !== undefined && scaled.current) {
       const g = grown.current = MathUtils.damp(grown.current, growth, 2.5, delta);
       scaled.current.scale.setScalar(size * (0.35 + 0.65 * g));

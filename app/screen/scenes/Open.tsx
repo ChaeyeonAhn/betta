@@ -8,6 +8,8 @@
 //   sociability  pull towards (and matching speed with) fish with a similar genome
 //   walls        soft push back from the stage edges
 // No fighting: relations show only as drifting together or keeping distance.
+// Meetings (encounters.ts): two that swim together for a while each take a
+// small patch of the other's colour; two that collide are knocked apart.
 // Positions live in refs shared by the WebGL tank and the screen-space tags.
 
 import { Hint } from "@/app/_components/Hint";
@@ -19,8 +21,9 @@ import type { BettaSocket } from "@/hooks/useBetta";
 import { genomeDistance } from "@/lib/genome";
 import type { Genome, PlayerView, Steer } from "@/lib/protocol";
 import { BettaCanvas, BettaVisual, stagePoint } from "./BettaCanvas";
-import { BettaModel } from "./BettaModel";
-import { createBubbleEvents } from "./bubbleEvents";
+import { BettaModel, type BettaMark } from "./BettaModel";
+import { MAX_MARKS } from "./bettaMaterial";
+import { createEncounters } from "./encounters";
 import { createGridLayout, projectedFishCenter, STAGE_H, STAGE_W } from "./gridLayout";
 import styles from "./Open.module.css";
 import { swimmingPitch } from "./swimmingPitch";
@@ -32,12 +35,19 @@ const FISH_H = FISH * 0.7;
 const MAX_SPEED = 280;
 const EDGE = 80;
 const SIMILAR = 0.7; // genomeDistance below this = "like me"
+/** A collision throws both fish apart this fast (px/s); it dies away at KNOCK_DECAY per second. */
+const KNOCK = 420;
+const KNOCK_DECAY = 3.2;
 const STEER_STALE_MS = 800;
 
 type Fish = {
   x: number; y: number; depth: number; preferredDepth: number;
   vx: number; vy: number; screenVx: number; screenVy: number;
   wander: number; dir: 1 | -1; genome: Genome;
+  /** Knock-back from a collision, on top of swimming: shoves the body without turning it. */
+  kx: number; ky: number;
+  /** Colour patches from the bettas it swam with. */
+  marks: BettaMark[];
 };
 
 export function Open({ players, gridSize, socket }: {
@@ -71,7 +81,7 @@ export function Open({ players, gridSize, socket }: {
     fish.current.set(p.id, {
       x: c.x, y: c.y, depth: firstFrame ? 0 : preferredDepth, preferredDepth,
       vx, vy, screenVx: vx, screenVy: vy, wander: Math.random() * Math.PI * 2,
-      dir: vx < 0 ? -1 : 1, genome: p.genome!,
+      dir: vx < 0 ? -1 : 1, genome: p.genome!, kx: 0, ky: 0, marks: [],
     });
   });
   for (const id of fish.current.keys()) if (!bettas.some((p) => p.id === id)) fish.current.delete(id);
@@ -90,13 +100,13 @@ export function Open({ players, gridSize, socket }: {
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
-    const bubbles = createBubbleEvents(last);
+    const encounters = createEncounters(last);
     let fishCount = 0;
     const tick = (now: number) => {
       const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
       last = now;
       const all = [...fish.current.entries()];
-      if (all.length < fishCount) bubbles.prune(fish.current);
+      if (all.length < fishCount) encounters.prune(fish.current);
       fishCount = all.length;
       advanceWater(current.current, fish.current.values(), dt);
       for (const [id, f] of all) {
@@ -121,7 +131,17 @@ export function Open({ players, gridSize, socket }: {
           const dx = o.x - f.x;
           const dy = o.y - f.y;
           const d = Math.hypot(dx, dy, (o.depth - f.depth) * 0.65) || 1;
-          if (id < otherId) bubbles.pair(now, id, f, otherId, o, d);
+          const met = id < otherId ? encounters.pair(now, dt, id, f, otherId, o, d) : null;
+          if (met === "bump") {
+            const flat = Math.hypot(dx, dy) || 1;
+            f.kx -= (dx / flat) * KNOCK;
+            f.ky -= (dy / flat) * KNOCK;
+            o.kx += (dx / flat) * KNOCK;
+            o.ky += (dy / flat) * KNOCK;
+          } else if (met === "together") {
+            mark(f, o.genome, now);
+            mark(o, g, now);
+          }
           if (d < personal) {
             const push = (1 - d / personal) * 420 * (0.5 + g.boundary);
             ax -= (dx / d) * push;
@@ -152,9 +172,18 @@ export function Open({ players, gridSize, socket }: {
         f.x = MathUtils.clamp(f.x + (f.vx + water.x) * dt, 30, STAGE_W - 30);
         f.y = MathUtils.clamp(f.y + (f.vy + water.y) * dt, 26, STAGE_H - 26);
         f.depth = MathUtils.clamp(f.depth + ((f.preferredDepth - f.depth) * 0.28 + water.depth) * dt, 0, TANK_DEPTH - 60);
-        const projected = projectTankPoint(f.x, f.y, f.depth);
-        f.screenVx = (projected.x - before.x) / dt;
-        f.screenVy = (projected.y - before.y) / dt;
+        // Heading and pitch follow the swimming only; a knock-back then moves the body.
+        const swum = projectTankPoint(f.x, f.y, f.depth);
+        f.screenVx = (swum.x - before.x) / dt;
+        f.screenVy = (swum.y - before.y) / dt;
+        if (f.kx !== 0 || f.ky !== 0) {
+          f.x = MathUtils.clamp(f.x + f.kx * dt, 30, STAGE_W - 30);
+          f.y = MathUtils.clamp(f.y + f.ky * dt, 26, STAGE_H - 26);
+          const fade = Math.exp(-KNOCK_DECAY * dt);
+          f.kx = Math.abs(f.kx) < 1 ? 0 : f.kx * fade;
+          f.ky = Math.abs(f.ky) < 1 ? 0 : f.ky * fade;
+        }
+        const projected = f.kx === 0 && f.ky === 0 ? swum : projectTankPoint(f.x, f.y, f.depth);
         if (f.screenVx < -8) f.dir = -1;
         else if (f.screenVx > 8) f.dir = 1;
 
@@ -203,6 +232,12 @@ export function Open({ players, gridSize, socket }: {
   );
 }
 
+/** A small patch of `from`'s colour somewhere on the middle of the body. */
+function mark(fish: Fish, from: Genome, now: number) {
+  if (fish.marks.length >= MAX_MARKS) return;
+  fish.marks.push({ hue: from.hue, saturation: from.saturation, u: 0.3 + Math.random() * 0.38, v: (Math.random() - 0.5) * 0.16, at: now });
+}
+
 function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: RefObject<Map<string, Fish>> }) {
   const model = useRef<Group>(null);
   const initialYaw = useRef(fish.current.get(id)?.dir === -1 ? Math.PI : 0);
@@ -220,7 +255,7 @@ function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: Ref
 
   return (
     <group ref={model} rotation-y={initialYaw.current}>
-      <BettaModel genome={genome} seed={id} size={FISH * 0.58} followHeading />
+      <BettaModel genome={genome} seed={id} size={FISH * 0.58} followHeading marks={() => fish.current.get(id)?.marks} />
     </group>
   );
 }
