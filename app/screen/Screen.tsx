@@ -93,7 +93,7 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
       <div className={styles.frame} style={{
         width: STAGE_W,
         height: STAGE_H,
-        transform: `translate(-50%, -50%) scale(${projection.scale.x / 100}, ${projection.scale.y / 100})`,
+        transform: `translate(calc(-50% + ${projection.offset.x}px), calc(-50% + ${projection.offset.y}px)) scale(${projection.scale.x / 100}, ${projection.scale.y / 100})`,
       }}>
         {!caged && stage !== "open" && <WaterBackdrop />}
         {caged && state && <Grid state={state} />}
@@ -115,6 +115,8 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
         <div className={styles.dock} style={{
           "--display-w": `${(STAGE_W * projection.scale.x) / 100}px`,
           "--display-h": `${(STAGE_H * projection.scale.y) / 100}px`,
+          "--display-x": `${projection.offset.x}px`,
+          "--display-y": `${projection.offset.y}px`,
         } as React.CSSProperties}>
           <p className={styles.count}>{online}/{players.length}</p>
           <ProjectionControls {...projection} />

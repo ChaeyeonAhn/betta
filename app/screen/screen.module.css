@@ -6,7 +6,7 @@
   overflow: hidden;
 }
 
-/* Fixed source pixels; only ProjectionControls changes the output scale. */
+/* Fixed source pixels; only ProjectionControls changes the output scale and position. */
 .frame {
   isolation: isolate;
   position: absolute;
@@ -38,8 +38,8 @@
 .dock {
   position: absolute;
   z-index: 2;
-  top: min(calc(50% + var(--display-h) / 2 + 10px), calc(100% - 42px));
-  left: max(calc(50% - var(--display-w) / 2), 10px);
+  top: clamp(10px, calc(50% + var(--display-y) + var(--display-h) / 2 + 10px), calc(100% - 42px));
+  left: clamp(10px, calc(50% + var(--display-x) - var(--display-w) / 2), calc(100% - 10px - min(var(--display-w), 100% - 20px)));
   width: min(var(--display-w), calc(100% - 20px));
   display: flex;
   justify-content: space-between;
