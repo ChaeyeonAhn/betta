@@ -14,24 +14,39 @@
   left: 50%;
   transform-origin: center;
   overflow: hidden;
-  background: var(--water-paper);
+  background: #000;
 }
 
 .frame::after {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  /* Above the entry layer (2), so the display edge shows while lining up the projector in the lobby. */
+  z-index: 3;
   border: 1px solid #a5b2c6;
   content: "";
   pointer-events: none;
 }
 
-.stage {
+.entry {
+  --dive-time: var(--entry-duration);
+  --dive-easing: cubic-bezier(.52, 0, .42, 1);
   position: absolute;
   inset: 0;
-  display: grid;
-  place-content: center;
-  text-align: center;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* The GPU camera moves through the surface; the canvas always fills the frame. */
+.ocean {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry {
+    --dive-time: var(--entry-reduced-duration);
+  }
 }
 
 /* Under the display's bottom edge, outside it. Kept on screen when the display fills the window. */
@@ -115,13 +130,6 @@
   color: #fff;
   font: inherit;
   white-space: nowrap;
-}
-
-.lobby {
-  display: block;
-  width: 100px;
-  height: 100px;
-  image-rendering: pixelated;
 }
 
 /* The grid's cubes and placeholders over the opening tank, fading away. */

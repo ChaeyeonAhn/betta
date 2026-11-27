@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import type { AdminCommand, Hello, SessionState } from "@/lib/protocol";
 import { ProjectionControls, useProjectionScale } from "./ProjectionControls";
+import { Landing } from "./Landing";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
+import { WATER_ENTRY_MS, WATER_ENTRY_REDUCED_MS, type WaterEntry } from "@/app/_components/waterEntry";
 import { Grid } from "./scenes/Grid";
 import { Open } from "./scenes/Open";
 import { STAGE_H, STAGE_W } from "./scenes/gridLayout";
@@ -16,39 +18,31 @@ const GRID_FADE_MS = 2200;
 type Props = {
   room: string;
   adminKey?: string;
-  /** Base URL phones open (tunnel / deployed). Null = this host on the LAN IP. */
-  publicUrl: string | null;
-  lanIp: string | null;
   socketUrl: string | null;
 };
 
 // Admin keys (not shown anywhere): Space or → = next stage, Shift+Space = skip to born,
 // R = reset, P = drop disconnected phones, H = hide the player count and the size control.
-export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
+export function Screen({ room, adminKey, socketUrl }: Props) {
   const hello = useMemo<Hello>(() => ({ role: "screen", room, adminKey }), [room, adminKey]);
   const { state, connected, socket } = useBetta(hello, socketUrl);
   const [hud, setHud] = useState(true);
-  const [joinUrl, setJoinUrl] = useState("");
+  const [diveArmed, setDiveArmed] = useState(false);
+  const onDiveEnd = useCallback(() => setDiveArmed(false), []);
   const projection = useProjectionScale();
   // The tank hum runs under every stage, from the lobby on.
   useAmbience(true);
 
   useEffect(() => {
-    const query = `/phone?room=${encodeURIComponent(room)}`;
-    if (publicUrl) {
-      setJoinUrl(publicUrl.replace(/\/$/, "") + query);
-      return;
-    }
-    // Deployed (or any non-local host): phones open the same origin.
-    const { hostname } = window.location;
-    if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-      setJoinUrl(window.location.origin + query);
-      return;
-    }
-    const host = lanIp ?? hostname;
-    const port = window.location.port ? `:${window.location.port}` : "";
-    setJoinUrl(`${window.location.protocol}//${host}${port}${query}`);
-  }, [publicUrl, lanIp, room]);
+    // A fresh connected lobby snapshot arms the next dive. Reconnecting alone
+    // must not arm it from useBetta's retained, potentially stale snapshot.
+    if (state?.stage === "lobby" && socket.current?.connected) setDiveArmed(true);
+    else if (state?.stage !== "input") setDiveArmed(false);
+  }, [state, socket]);
+
+  useEffect(() => {
+    if (!connected) setDiveArmed(false);
+  }, [connected]);
 
   useEffect(() => {
     const send = (command: AdminCommand) => socket.current?.emit("admin", command);
@@ -73,9 +67,19 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
 
   const players = state?.players ?? [];
   const online = players.filter((p) => p.connected).length;
+  // One person icon per player on the landing pool; null until the first snapshot.
+  const floaters = useMemo(
+    () => (state ? state.players.map(({ id, connected }) => ({ id, connected })) : null),
+    [state],
+  );
   const stage = state?.stage;
   // Bettas grow on the phones and go straight into the grid as each one is done.
-  const caged = stage === "born" || stage === "grid" || stage === "input";
+  const emptyInput = stage === "input" && !players.some((player) => player.genome && player.slot !== null);
+  const diving = stage === "input" && connected && diveArmed;
+  // Until the first snapshot arrives the screen shows the lobby, not a black frame.
+  const lobby = !state || stage === "lobby";
+  const entry: WaterEntry = lobby ? "lobby" : diving ? "diving" : "underwater";
+  const caged = stage === "born" || stage === "grid" || (stage === "input" && !emptyInput);
   // When the walls come down, the empty grid stays a moment over the open tank and fades away.
   const lastGrid = useRef<SessionState | null>(null);
   if (stage === "grid" && state) lastGrid.current = state;
@@ -95,7 +99,6 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
         height: STAGE_H,
         transform: `translate(calc(-50% + ${projection.offset.x}px), calc(-50% + ${projection.offset.y}px)) scale(${projection.scale.x / 100}, ${projection.scale.y / 100})`,
       }}>
-        {!caged && stage !== "open" && <WaterBackdrop />}
         {caged && state && <Grid state={state} />}
         {stage === "open" && state && <Open players={players} gridSize={state.gridSize} socket={socket} />}
         {stage === "open" && leaving && (
@@ -103,10 +106,16 @@ export function Screen({ room, adminKey, publicUrl, lanIp, socketUrl }: Props) {
             <Grid state={leaving} leaving />
           </div>
         )}
-        {stage === "lobby" && (
-          <section className={styles.stage}>
-            <img className={styles.lobby} src="/qr-code.svg" alt={`Scan to join · ${joinUrl}`} />
-          </section>
+        {(lobby || diving || emptyInput) && (
+          <div className={styles.entry} data-entry={entry} style={{
+            "--entry-duration": `${WATER_ENTRY_MS}ms`,
+            "--entry-reduced-duration": `${WATER_ENTRY_REDUCED_MS}ms`,
+          } as React.CSSProperties}>
+            {entry !== "underwater" && <Landing diving={diving} onDiveEnd={onDiveEnd} joined={players.length} />}
+            <div className={styles.ocean}>
+              <WaterBackdrop entry={entry} floaters={floaters} />
+            </div>
+          </div>
         )}
       </div>
 

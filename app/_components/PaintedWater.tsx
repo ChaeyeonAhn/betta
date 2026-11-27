@@ -1,10 +1,13 @@
 "use client";
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 import { Matrix3, PerspectiveCamera, Vector2, type ShaderMaterial } from "three";
 import { BettaVisual } from "@/app/screen/scenes/BettaCanvas";
 import type { WaterCurrent } from "@/app/screen/scenes/waterCurrent";
+import { entryWaterShader } from "./entryWaterShader";
+import { SurfaceIcons, type EntryClock, type Floater } from "./SurfaceIcons";
+import { WATER_ENTRY_MS, type WaterEntry } from "./waterEntry";
 import { waterSurfaces } from "./waterSurfaces";
 
 const vertex = /* glsl */ `
@@ -138,13 +141,71 @@ function WaterAnimation({ steered = false }: { steered?: boolean }) {
   return null;
 }
 
-export function WaterBackdrop({ look }: { look?: () => number } = {}) {
+function EntryWater({ entry, floaters }: { entry: WaterEntry; floaters?: readonly Floater[] | null }) {
+  const invalidate = useThree((state) => state.invalidate);
+  const material = useRef<ShaderMaterial>(null);
+  const motion = useRef<MediaQueryList | null>(null);
+  const startedAt = useRef(0);
+  // Update the live uniforms across stage changes without rebuilding the material.
+  // The icons on the water read these same uniforms, so they ride the same waves and dive.
+  const uniforms = useMemo<EntryClock>(() => ({
+    waterTime: { value: 0 },
+    diveProgress: { value: 0 },
+  }), []);
+
+  useLayoutEffect(() => {
+    const preference = matchMedia("(prefers-reduced-motion: reduce)");
+    motion.current = preference;
+    const redraw = () => invalidate();
+    preference.addEventListener("change", redraw);
+    return () => preference.removeEventListener("change", redraw);
+  }, [invalidate]);
+
+  useLayoutEffect(() => {
+    startedAt.current = performance.now();
+    invalidate();
+  }, [entry, invalidate]);
+
+  useFrame((_, delta) => {
+    const reduce = motion.current?.matches ?? false;
+    if (!reduce) uniforms.waterTime.value += Math.min(delta, .08);
+    uniforms.diveProgress.value = entry === "lobby" ? 0
+      : entry === "underwater" || reduce ? 1
+      : Math.min(1, (performance.now() - startedAt.current) / WATER_ENTRY_MS);
+    // R3F copies the uniforms prop into the material's own objects, so the
+    // shared clock is the source and the pool's copies follow it.
+    const live = material.current?.uniforms;
+    if (!live) return;
+    live.waterTime.value = uniforms.waterTime.value;
+    live.diveProgress.value = uniforms.diveProgress.value;
+  }, -2);
+
+  return (
+    <>
+      <mesh renderOrder={-1000} frustumCulled={false}>
+        <planeGeometry args={[2, 2]} />
+        <shaderMaterial ref={material} vertexShader={vertex} fragmentShader={entryWaterShader} uniforms={uniforms}
+          transparent depthTest={false} depthWrite={false} toneMapped={false} />
+      </mesh>
+      {floaters !== undefined && entry !== "underwater" && <SurfaceIcons clock={uniforms} floaters={floaters} />}
+    </>
+  );
+}
+
+type BackdropProps = {
+  look?: () => number;
+  entry?: WaterEntry;
+  /** Entry only: one person icon per player floats on the pool (null until the first snapshot). */
+  floaters?: readonly Floater[] | null;
+};
+
+export function WaterBackdrop({ look, entry, floaters }: BackdropProps = {}) {
   return (
     <BettaVisual fallback={null}>
       <Canvas aria-hidden dpr={1} frameloop="demand" resize={{ offsetSize: true }}
-        gl={{ antialias: false, alpha: false }}
+        gl={{ antialias: false, alpha: !!entry }}
         style={{ position: "absolute", inset: 0, zIndex: -1, pointerEvents: "none" }}>
-        <PaintedWater look={look} />
+        {entry ? <EntryWater entry={entry} floaters={floaters} /> : <PaintedWater look={look} />}
         <WaterAnimation steered={!!look} />
       </Canvas>
     </BettaVisual>

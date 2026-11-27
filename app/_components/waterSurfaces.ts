@@ -1,6 +1,6 @@
-// The bed and the underside of the surface are intersected in world space.
-// Every colour, ripple and etched line is generated from these height fields.
-export const waterSurfaces = /* glsl */ `
+// The surface's height field alone. It has no derivatives, so vertex shaders
+// (the icons floating on the landing pool) can include it too.
+export const waterRoof = /* glsl */ `
   float wsHash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
   }
@@ -12,6 +12,22 @@ export const waterSurfaces = /* glsl */ `
     return mix(mix(wsHash(i), wsHash(i + vec2(1.0, 0.0)), u.x),
                mix(wsHash(i + vec2(0.0, 1.0)), wsHash(i + vec2(1.0)), u.x), u.y);
   }
+
+  float wsRoof(vec2 p, float t, vec2 travel) {
+    vec2 q = p + travel * 0.035;
+    float warp = wsNoise(q * 0.65 + vec2(t * 0.045, -t * 0.033));
+    float a = sin(q.x * 3.6 + q.y * 4.4 - t * 0.73 + warp * 2.4);
+    float b = sin(q.x * 8.3 - q.y * 2.9 + t * 0.96 + warp);
+    float c = sin(q.x * 17.7 + q.y * 13.2 - t * 1.10 + a * 0.7);
+    float d = sin(q.x * 33.0 - q.y * 41.0 + t * 1.17 + b * 0.38);
+    return 1.05 + 0.052 * a + 0.026 * b + 0.013 * c + 0.005 * d;
+  }
+`;
+
+// The bed and the underside of the surface are intersected in world space.
+// Every colour, ripple and etched line is generated from these height fields.
+export const waterSurfaces = /* glsl */ `
+  ${waterRoof}
 
   float wsFbm(vec2 p) {
     float value = 0.55 * wsNoise(p);
@@ -28,16 +44,6 @@ export const waterSurfaces = /* glsl */ `
     float shoulder = sin(p.y * 4.6 - p.x * 0.42 + turn * 0.73);
     return -1.15 + 0.145 * swale + 0.055 * shoulder
            + 0.12 * (wsFbm(p * vec2(0.85, 1.25)) - 0.45);
-  }
-
-  float wsRoof(vec2 p, float t, vec2 travel) {
-    vec2 q = p + travel * 0.035;
-    float warp = wsNoise(q * 0.65 + vec2(t * 0.045, -t * 0.033));
-    float a = sin(q.x * 3.6 + q.y * 4.4 - t * 0.73 + warp * 2.4);
-    float b = sin(q.x * 8.3 - q.y * 2.9 + t * 0.96 + warp);
-    float c = sin(q.x * 17.7 + q.y * 13.2 - t * 1.10 + a * 0.7);
-    float d = sin(q.x * 33.0 - q.y * 41.0 + t * 1.17 + b * 0.38);
-    return 1.05 + 0.052 * a + 0.026 * b + 0.013 * c + 0.005 * d;
   }
 
   // The line width follows the pixel footprint before distant strokes merge.
@@ -147,7 +153,19 @@ export const waterSurfaces = /* glsl */ `
     return ink;
   }
 
-  vec3 waterInk(vec3 ray, float t, vec2 flow, vec2 travel, bool deepWater) {
+  vec3 wsFloorFrom(vec3 origin, vec3 ray, float t, vec2 flow, vec2 travel, vec3 water) {
+    float distance = (-1.15 - origin.y) / ray.y;
+    for (int i = 0; i < 4; i++) {
+      vec3 hit = origin + ray * distance;
+      float correction = (wsBed(hit.xz) - hit.y) / min(-0.035, ray.y);
+      distance = max(0.0, distance + clamp(correction, -0.4, 0.4));
+    }
+    vec3 hit = origin + ray * distance;
+    float visibility = exp(-distance * 0.19) * smoothstep(0.035, 0.19, -ray.y);
+    return mix(water, wsFloorInk(hit, ray, distance, t, flow, travel), visibility);
+  }
+
+  vec3 wsWaterFrom(vec3 origin, vec3 ray, float t, vec2 flow, vec2 travel, bool deepWater) {
     ray = normalize(ray);
     vec3 deep = vec3(0.018, 0.033, 0.080);
     float lightOffset = (ray.x - 0.40) / 0.35;
@@ -158,28 +176,21 @@ export const waterSurfaces = /* glsl */ `
       water = mix(vec3(0.003, 0.008, 0.019), deep, remainingLight);
       water += vec3(0.009, 0.022, 0.040) * scatter;
     }
-    if (!deepWater && ray.y < -0.035) {
-      float distance = -1.15 / ray.y;
-      for (int i = 0; i < 4; i++) {
-        vec3 hit = ray * distance;
-        float correction = (wsBed(hit.xz) - hit.y) / min(-0.035, ray.y);
-        distance = max(0.0, distance + clamp(correction, -0.4, 0.4));
-      }
-      vec3 hit = ray * distance;
-      float visibility = exp(-distance * 0.19) * smoothstep(0.035, 0.19, -ray.y);
-      return mix(water, wsFloorInk(hit, ray, distance, t, flow, travel), visibility);
-    }
+    if (!deepWater && ray.y < -0.035) return wsFloorFrom(origin, ray, t, flow, travel, water);
     if (ray.y > 0.035) {
-      float distance = 1.05 / ray.y;
+      float distance = (1.05 - origin.y) / ray.y;
       for (int i = 0; i < 4; i++) {
-        vec3 hit = ray * distance;
+        vec3 hit = origin + ray * distance;
         float correction = (wsRoof(hit.xz, t, travel) - hit.y) / max(0.035, ray.y);
         distance = max(0.0, distance + clamp(correction, -0.3, 0.3));
       }
-      vec3 hit = ray * distance;
+      vec3 hit = origin + ray * distance;
       float visibility = exp(-distance * 0.20) * smoothstep(0.035, 0.19, ray.y);
       return mix(water, wsRoofInk(hit, ray, distance, t, travel), visibility);
     }
     return water;
+  }
+  vec3 waterInk(vec3 ray, float t, vec2 flow, vec2 travel, bool deepWater) {
+    return wsWaterFrom(vec3(0.0), ray, t, flow, travel, deepWater);
   }
 `;

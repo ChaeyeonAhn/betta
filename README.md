@@ -28,7 +28,7 @@ pnpm dev
 - `/screen?room=betta` — projection. Keys: `1`/`2` mode A/B, `Space`/`→` next stage, `R` reset, `H` hide HUD.
 - `/phone?room=betta` — what visitors open on their phones.
 
-Phones can't reach the laptop on school Wi‑Fi or an iPhone hotspot. Use `pnpm dev:tunnel` (needs `cloudflared`) and open the `phone` URL it prints. Env read at request time: `SOCKET_URL` (betta server), `PUBLIC_URL` (base URL in the join link).
+Phones can't reach the laptop on school Wi‑Fi or an iPhone hotspot. Use `pnpm dev:tunnel` (needs `cloudflared`) and open the `phone` URL it prints. Env read at request time: `SOCKET_URL` (betta server). The join QR on the screen is the static `public/qr-code.svg`; regenerate it if the phone URL changes.
 
 Plan: `docs/plan.md`.
 

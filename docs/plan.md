@@ -1,6 +1,7 @@
 # Betta Project — Implementation Plan v2
 
 > v0 written 2026-11-18, v1 revised after review the same day. v2 (2026-11-21) is in English and matches the code. v2.1 (same day): Mode A redesigned around the growing betta, born fills the grid, betta card at the end of open. v2.2 (11/22): **Mode B removed**; the feed is the only input. The projection shows no text but the player count.
+> v2.3 (11/27): the lobby is a landing page: white pool room, a heavy one-line title, a small join QR with the joined count under it, and SNS icons floating on the water that the camera dives past (§2-6).
 > Sources: pitch deck (Team3_ChaeyeonAhn_FinalProject.pdf), Notion "Final Project idea / plan" (latest), "Betta project" and "Summary" (latest wins where they overlap).
 > Goal: **a skeleton demo of the full flow by 11/23.** Everything from joining to the shared tank must run end to end over sockets. Visuals can stay rough.
 
@@ -13,7 +14,7 @@
 | Fighting | **No fighting.** Bettas relate only by drifting together or keeping their distance. The genome's `aggression` axis was replaced by **`boundary`**. |
 | Ending | **None for the tank.** `open` is the exhibition loop: late visitors join, and the bettas of visitors who left fade out (§1-1). **Each visitor** steers for 90s, then their phone shows a **betta card** to save or share; their betta stays in the tank. |
 | 11/23 scope | Full flow skeleton. Intro video and sound are left as slots. |
-| Hosting | **Cloud.** Next.js → Vercel (`betta-sigma.vercel.app`), socket server → **EC2 Seoul** (`3-37-110-43.sslip.io`, Caddy HTTPS). Railway was dropped because KAIST DNS can't resolve `*.up.railway.app`. Local dev still works (`pnpm dev`, `dev:mobile`, `dev:tunnel`). Socket and phone URLs come from runtime env (`SOCKET_URL`, `PUBLIC_URL`). |
+| Hosting | **Cloud.** Next.js → Vercel (`betta-sigma.vercel.app`), socket server → **EC2 Seoul** (`3-37-110-43.sslip.io`, Caddy HTTPS). Railway was dropped because KAIST DNS can't resolve `*.up.railway.app`. Local dev still works (`pnpm dev`, `dev:mobile`, `dev:tunnel`). The socket URL comes from runtime env (`SOCKET_URL`). The join QR is the static `public/qr-code.svg`: regenerate it when the phone URL changes (`PUBLIC_URL` is no longer read). |
 | Projection | **Fixed 1920 × 602 stage** (about 3.2 : 1). `Screen.tsx` letterboxes it into the window. Just under the display, outside it: the player count (`online/total`) and a "Projection size" panel for width and height, in the work's black-and-white mono style. `H` hides both. No other text. |
 | Visitor-facing copy | **English.** |
 
@@ -26,7 +27,7 @@ lobby ──▶ input ──▶ born ──▶ grid ──▶ open ⟲ (no end)
 
 | stage | Projection (`/screen`) | Phone (`/phone`) | Next |
 | --- | --- | --- | --- |
-| `lobby` | Only the join QR, floating in the water | No words: turn the phone to look around the water; a rocking-phone icon every 3s | Admin key |
+| `lobby` | Landing (`app/screen/Landing.tsx`): white pool room, "SCAN TO DIVE INTO THE BETTA PROJECT", the join QR, the joined count; SNS icons float on the water (§2-6). `next` dives the camera into the water | No words: turn the phone to look around the water; a rocking-phone icon every 3s | Admin key |
 | `input` | The grid; each betta fades in (with its cube) in a random front cell as soon as its visitor releases it | Growing betta + fake SNS app (45s), then swipe up to release | Everyone in the round released → `born` |
 | `born` | The grid, empty at first. Each betta fades in with its cube in a random front cell as it is released. Once everyone is in, grey placeholder bettas fade in with their cubes while the camera pulls back to 2.2× its distance: the cells in view first (empty front cells leading), then each cube as it comes into the frame, so the tank keeps growing at its edges (14s); the huge full grid holds for 20s, and the camera eases back in for `grid` | My betta in the middle; the camera pulls back to show its cube in a grid; a swipe-up icon; swipe to release; then the phone **is** the betta, inside its cell (§2-3c) | Auto after the fill + 20s hold. Admin `Space`: start the fill now / skip the hold |
 | `grid` | Same lattice, every cell full; cracks spread over the real bettas' cells with taps; a tapping-finger icon over the shared gauge | Still inside the cell: tap anywhere to push on the front glass, which cracks; a hairline shared gauge | Shared total ≥ threshold, or 60s timeout (server decides) |
@@ -140,14 +141,30 @@ Why: in v0 the visitor never saw the betta while playing, so the fish in `born` 
 - `SessionState` also has `fillAt` (born: when the placeholders started) and `gridSize` (the player count the grid layout is built for).
 - `phase`: `waiting` / `input` / `caged` / `free` / `fading`. Players can be in different phases because of late joiners.
 
+### 2-6. Lobby: SNS icons on the water (planned 11/27)
+
+The landing pool has thin picture panels floating on its surface (`public/surface-icons/`, cut from the 1x icon set: white background removed, outlines and fills kept). **Ambient** icons (30 at start: heart, happy, laugh, share, message, mad, sad, serious) are decoration. **Each joined player** adds a person icon that rises from underwater and then drifts with the rest. It never fades. Under the QR, the number of joined players is shown as a bare number (`12`), shown at 0 too.
+
+- **Render**: each picture stacked 7 times through a thin depth (10% of its height; the layers behind the front are its darker edge), in the entry Canvas, mostly facing the camera (±15° yaw plus a slow sway). The camera is the shader's: `eye`, pitch (incl. the `-0.32·sin(π·move)` dip) and ray scale move out of the GLSL into `waterEntry.ts` (`entryCamera(diveProgress)`, printed into the GLSL as float literals), and the three camera copies them every frame in `useFrame` with a custom projection matrix (half-tan 1.35 × 0.62). Set it per frame: R3F rewrites the projection on resize.
+- **Stretch**: the shader's rays span 2.7 × 1.24 (2.18:1) over a 1920 × 602 frame (3.19:1), so the whole pool is drawn ~1.47× wider than true. The matched camera stretches the icons the same way; each panel is scaled `x × (2.7/1.24) / (STAGE_W/STAGE_H)` (≈0.68) so hearts stay heart-shaped while their positions still land on the water.
+- **Waves on the GPU**: split `wsHash`, `wsNoise`, `wsRoof` out of `waterSurfaces` into their own chunk (`waterSurfaces` includes it). The rest of `waterSurfaces` uses `fwidth`, which doesn't exist in a vertex shader. Vertex: lift each icon to `wsRoof` at its anchor and tilt it by the broad slope (clamped to ±0.3 rad). Fragment: below the local `wsRoof` → water tint and fade, thin meniscus line at contact. Not a JS port: `wsHash` (`fract(sin)`) differs between GPU float32 and CPU float64, so icons would sit off the visible waves. The icons read the **same `waterTime` uniform** as `EntryWater` (it caps delta and freezes under reduced motion), not a clock of their own.
+- **Colour**: the pictures are sampled with no colour space and written raw like the water shader (no tone mapping), so they show as drawn.
+- **Motion**: each icon drifts on its own slowly turning current inside the visible water and rocks a little; soft repulsion keeps them apart, and each one starts at the most open of 12 random spots. Baseline = the first `SessionState` that arrives after mount (state comes after the socket connects), and those ids start on the surface. A later new `player.id` rises from ~0.5 below over ~2.5s (ease-out, slight overshoot). **Leaving**: the server deletes a lobby player on disconnect (no genome yet), so `connected: false` never happens here. The client keeps a vanished id's icon half-sunk for 60s instead; if the id comes back (same `playerId` from localStorage) it rises back to the surface, otherwise it sinks away. The count under the QR is `players.length` and drops at once. Dive: the icons stay where they float and only the camera moves, so they slide up out of the frame as it goes down; once the dive ends they are no longer drawn. Reduced motion: placed, no drift or rise; `invalidate()` on every players change, since the demand frameloop doesn't tick then.
+- **Capacity**: the water is the bottom ~148px of the frame (far wall at y ≈ 454px, near edge z ≈ 0.19). A 0.15-tall panel at the far wall is ~24px. 30 ambient + up to ~40 players is tight; tune ambient size and count if player icons get lost. The canvas sits above the DOM (`.ocean` z-index 1), but the QR and count end around y ≈ 295px, clear of the water.
+- **Files**: `waterEntry.ts` (camera), `waterSurfaces.ts` (roof chunk split), `entryWaterShader.ts` (uses both), `PaintedWater.tsx` (shared dive progress and `waterTime`, `floaters` prop on `WaterBackdrop`), new `SurfaceIcons.tsx`, `surfaceIconImages.ts`, `surfaceIconMaterial.ts`, `Screen.tsx` + `Landing.tsx/.css` (count). No server or protocol change.
+- **Not covered**: icons don't show in the water's reflection (a mirrored fake copy could come later). Without WebGL there are no icons; the count still shows.
+
 ## 3. Files
 
 ```
 app/
   page.tsx                   landing: just the links to /phone and /screen over the water
-  _components/               BettaShape (SVG fallback), ExhibitionBetta (cover), PaintedWater + water shaders, Hint (icons)
+  _components/               BettaShape (SVG fallback), ExhibitionBetta (cover), PaintedWater + water shaders, Hint (icons),
+                             waterEntry (entry camera, shared by shader and icons), entryWaterShader (pool + dive),
+                             SurfaceIcons + surfaceIconImages + surfaceIconMaterial (lobby icons on the water)
   screen/
-    page.tsx  Screen.tsx     projection, admin keys, lobby QR, player count
+    page.tsx  Screen.tsx     projection, admin keys, player count
+    Landing.tsx              lobby: title, join QR, joined count over the pool room
     ProjectionControls.tsx   projection size calibration
     scenes/                  Grid (input A + born + grid; + GridTank, GridFillerFish, cracks), Open (+ WaterTank),
                              BettaCanvas, BettaModel, bettaMesh, bettaMaterial,
@@ -177,6 +194,8 @@ scripts/
   dev-tunnel.mjs             pnpm dev:tunnel
 ```
 
+`public/surface-icons/` holds the icon pictures (cut from the 1x icon set, background removed).
+
 Not created yet: `scripts/bots.ts` (N fake phones for a 15–20 person test alone).
 
 ## 4. Schedule (11/18 → 11/23)
@@ -188,6 +207,7 @@ Not created yet: `scripts/bots.ts` (N fake phones for a 15–20 person test alon
 | 11/21 | 3D bettas in all stages, shader water, English copy, plan v2; Mode A redesign (growing betta, bubbles), random cells + placeholder fill, betta card | Done |
 | 11/22 | First-person cell view on the phone, icon hints, camera pull-back fill, card polish, Mode B removed; real-device check of the feed, motion access and the card (iOS share sheet) | In progress |
 | 11/23 | `bots.ts` with 15–20 phones, real iOS and Android devices, leave → fade, repeated resets | Demo: repeated rounds without breaks |
+| 11/27 | Landing page (title, small QR, joined count), SNS icons floating on the lobby water with the dive, review fixes (projection outline above the entry layer, lobby before the first snapshot) | Done |
 
 If time runs short, drop in this order: colour bleed → late-joiner single cube (join only in the lobby instead) → number of axes the feed covers.
 
@@ -203,6 +223,7 @@ If time runs short, drop in this order: colour bleed → late-joiner single cube
 - **Orientation sensor** needs HTTPS (the Vercel URL; not the LAN `http://` dev URL) and, on iOS, a tap to grant motion access: the first tap on the phone asks. Nothing on screen says to tap, so an iPhone that never taps in the lobby only gets to look around once it taps in the cell. Check on real devices, along with the frame rate of the cell view (hundreds of placeholder cubes + every visitor's betta) on mid-range phones.
 - **Haptics**: `navigator.vibrate` works on Android Chrome only.
 - **Next 16.4.3 security notice**: check for a patch release before the exhibition.
+- **R3F copies shader uniforms.** `<shaderMaterial uniforms={u}>` copies each entry into the material's own objects (R3F `applyProps`), so mutating `u` afterwards changes nothing on that material. `EntryWater` keeps one shared clock (`waterTime`, `diveProgress`), updates it first each frame, and copies it into the pool material; the icon materials are built with `new ShaderMaterial` and hold the clock's objects directly. Sharing the prop object instead left the icons frozen at time 0 and never diving (fixed 11/27).
 
 ## 6. Backlog after the demo
 

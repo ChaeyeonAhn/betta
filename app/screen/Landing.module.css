@@ -1,0 +1,101 @@
+.landing {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  color: #131a21;
+  pointer-events: none;
+}
+
+.air {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 49% 37%, #fff 15%, #f9faf9 55%, #e3e8e8 100%);
+}
+
+.air::before,
+.air::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+}
+
+.air::before {
+  background: linear-gradient(110deg, #bcc8cb75, #e6edef35 18%, transparent 28%);
+  clip-path: polygon(0 0, 15% 9%, 15% 71%, 0 100%);
+}
+
+.air::after {
+  background: linear-gradient(250deg, #bdc8cc6e, #e6edef33 18%, transparent 28%);
+  clip-path: polygon(100% 0, 85% 9%, 85% 71%, 100% 100%);
+}
+
+.invitation {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 78px;
+  text-align: center;
+}
+
+.invitation h1 {
+  margin: 0;
+  border: 0;
+  font: 900 64px / 1 var(--font-sans);
+  letter-spacing: -.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.qrCard {
+  margin-top: 28px;
+  padding: 8px;
+  background: #fff;
+}
+
+.joined {
+  margin: 14px 0 0;
+  font: 900 28px / 1 var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+.qrCard img {
+  display: block;
+  filter: brightness(0);
+  image-rendering: pixelated;
+}
+
+.landing[data-diving="true"] {
+  animation: reveal var(--dive-time) linear forwards;
+}
+
+.landing[data-diving="true"] .invitation {
+  animation: invitationLift var(--dive-time) var(--dive-easing) forwards;
+}
+
+@keyframes reveal {
+  0%, 85% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes invitationLift {
+  0% { transform: translateY(0); opacity: 1; }
+  36% { opacity: 1; }
+  75%, 100% { transform: translateY(-500px); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing[data-diving="true"] {
+    animation-name: softReveal;
+  }
+
+  .landing[data-diving="true"] .invitation {
+    animation: none;
+  }
+}
+
+@keyframes softReveal {
+  to { opacity: 0; }
+}
