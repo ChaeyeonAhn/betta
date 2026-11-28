@@ -7,10 +7,11 @@ import type { ClientToServer, Hello, Steer } from "@/lib/protocol";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import { unlockAudio } from "@/app/_components/sound";
 import { BettaCard } from "./card/BettaCard";
-import { Joystick } from "./controls/Joystick";
+import { TiltConsole } from "./controls/TiltConsole";
 import { FakeFeed } from "./modes/FakeFeed";
 import { LookAround } from "./LookAround";
 import { Cell } from "./Cell";
+import { Helper } from "./Helper";
 import styles from "./phone.module.css";
 
 export function Phone({ room, socketUrl }: { room: string; socketUrl: string | null }) {
@@ -56,8 +57,12 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   if (!connected) return <Centered dim>Connecting to the tank…</Centered>;
 
   if (state.stage === "grid" && me.genome) {
-    if (me.slot === null) return <LookAround />;
-    return <Cell state={state} me={me} slot={me.slot} onPush={() => socket.current?.emit("effort", { amount: 1 })} />;
+    const push = () => socket.current?.emit("effort", { amount: 1 });
+    // Out of the cell (or never had one): help break the others'.
+    if (me.broken || me.slot === null) {
+      return <Helper state={state} me={me} onPush={push} onHelp={(slot) => socket.current?.emit("help", { slot })} />;
+    }
+    return <Cell state={state} me={me} slot={me.slot} onPush={push} />;
   }
 
   if (state.stage === "open" && me.genome && cardDue) {
@@ -65,7 +70,7 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   }
 
   if (state.stage === "open" && me.genome) {
-    return <Joystick onSteer={sendSteer} />;
+    return <TiltConsole onSteer={sendSteer} />;
   }
 
   // The lobby, and any moment in between: just the water to look around in.

@@ -7,23 +7,29 @@ import { Hint } from "@/app/_components/Hint";
 import type { PlayerView, SessionState } from "@/lib/protocol";
 import { BettaVisual } from "./BettaCanvas";
 import styles from "./Grid.module.css";
-import { createGridLayout } from "./gridLayout";
+import { createGridLayout, type GridHandoff } from "./gridLayout";
 import { crackLines } from "./cracks";
 import { REACTION_MS, type GridReactionEvent } from "./GridReaction";
 import { FRY_GENOME, GridTank } from "./GridTank";
 
-/** During the handoff to the open tank, the last lattice fades over the freed fish. */
-export function Grid({ state, leaving = false, reactions }: {
+/**
+ * Creation, the fill and the walls, on one WebGL tank. During the handoff to
+ * the open tank, the last lattice fades over the freed fish.
+ * `clockOffset`: server time minus this device's, for the fill clock.
+ */
+export function Grid({ state, leaving = false, reactions, clockOffset = 0, handoff }: {
   state: SessionState;
   leaving?: boolean;
   reactions?: GridReactionEvent[];
+  clockOffset?: number;
+  handoff?: GridHandoff;
 }) {
   const walls = state.stage === "grid";
+  const fillStart = state.fillAt === null ? null : state.fillAt - clockOffset;
   const layout = useMemo(() => createGridLayout(state.gridSize), [state.gridSize]);
   const { slots, side } = layout;
   const bettas = state.players.flatMap((player) =>
     player.slot !== null && player.slot < slots.length ? [{ ...player, slot: player.slot }] : []);
-  const share = state.effort.threshold ? Math.min(1, state.effort.total / state.effort.threshold) : 0;
 
   return (
     <section className={styles.root} data-leaving={leaving}>
@@ -48,9 +54,10 @@ export function Grid({ state, leaving = false, reactions }: {
           </div>
         );
       })}>
-        <GridTank players={bettas} layout={layout} reactions={reactions} leaving={leaving} />
+        <GridTank players={bettas} layout={layout} reactions={reactions} leaving={leaving}
+          fillStart={fillStart} full={walls || leaving} handoff={handoff} />
       </BettaVisual>
-      {walls && !leaving && bettas.map((player) => {
+      {walls && !leaving && bettas.filter((player) => !player.broken).map((player) => {
         const { x, y } = slots[player.slot];
         return (
           <div key={player.id} className={styles.cell} style={{ left: x - side / 2, top: y - side / 2, width: side, height: side }}>
@@ -62,9 +69,6 @@ export function Grid({ state, leaving = false, reactions }: {
       {walls && !leaving && (
         <footer className={styles.footer}>
           <Hint kind="tap" size={64} className={styles.hint} />
-          <div className={styles.bar}>
-            <div className={styles.fill} style={{ width: `${share * 100}%` }} />
-          </div>
         </footer>
       )}
     </section>
@@ -74,7 +78,7 @@ export function Grid({ state, leaving = false, reactions }: {
 function FallbackReaction({ reaction, side }: { reaction: GridReactionEvent; side: number }) {
   const [elapsed] = useState(() => performance.now() - reaction.at);
   if (elapsed >= REACTION_MS) return null;
-  const width = Math.round(side * 0.25);
+  const width = Math.round(side * 0.15);
   return (
     <img
       className={styles.fallbackReaction}

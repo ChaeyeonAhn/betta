@@ -14,19 +14,50 @@
   -webkit-user-select: none;
 }
 
-/* Joystick: as plain as the feed, white lines on black. */
+/* The tilt console: as plain as the feed, white lines on black. */
 
 .console {
   justify-content: center;
   background: #000;
 }
 
-.ring {
+/* A spirit level: the dot leans the way the phone does. */
+.level {
+  position: relative;
   display: grid;
   place-items: center;
+}
+
+.ring {
+  position: absolute;
+  inset: 20px;
   border: 1px solid rgb(255 255 255 / 60%);
   border-radius: 50%;
 }
+
+/* Level: where the dot rests. */
+.center {
+  position: absolute;
+  width: 58px;
+  height: 58px;
+  border: 1px dashed rgb(255 255 255 / 28%);
+  border-radius: 50%;
+}
+
+/* One chevron per direction, outside the ring; the side the phone leans to lights up. */
+.arrow {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-top: 2px solid #fff;
+  border-left: 2px solid #fff;
+  opacity: .22;
+  transition: opacity 120ms linear;
+}
+.arrow[data-side="up"] { top: -14px; transform: rotate(45deg); }
+.arrow[data-side="right"] { right: -14px; transform: rotate(135deg); }
+.arrow[data-side="down"] { bottom: -14px; transform: rotate(225deg); }
+.arrow[data-side="left"] { left: -14px; transform: rotate(315deg); }
 
 .dot {
   width: 44px;
@@ -34,4 +65,11 @@
   border-radius: 50%;
   background: #fff;
   pointer-events: none;
+}
+
+.consoleHint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(40px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
 }

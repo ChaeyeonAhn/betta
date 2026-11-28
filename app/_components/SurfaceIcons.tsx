@@ -2,8 +2,8 @@
 
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { TextureLoader, type BufferGeometry, type Mesh, type ShaderMaterial, type Texture } from "three";
-import { iconMaterial, type Uniform } from "./surfaceIconMaterial";
+import { PlaneGeometry, TextureLoader, type BufferGeometry, type Mesh, type ShaderMaterial, type Texture } from "three";
+import { iconMaterial, splashMaterial, type Uniform } from "./surfaceIconMaterial";
 import { ICON_KINDS, iconAspect, iconGeometry, iconUrl, type SurfaceIconKind } from "./surfaceIconImages";
 import { ENTRY_EYE, ENTRY_PITCH, ENTRY_RAY, WATER_SURFACE_Y, entryCamera } from "./waterEntry";
 
@@ -22,8 +22,14 @@ const PERSON_SIZE = 0.18;
 const FLOAT = 0.32;
 const PERSON_FLOAT = 0.44;
 const HALF_SUNK = 0;
-const START_DEPTH = -0.6;
 const GONE_DEPTH = -0.5;
+/** A new player's icon drops in from above the frame, */
+const DROP_HEIGHT = 2.6;
+const GRAVITY = 7;
+/** keeps this much of its speed as it hits the water, plunges under, and bobs back up. */
+const PLUNGE = 0.32;
+const SPLASH_RADIUS = 0.42;
+const SPLASH_MS = 1700;
 /** A player whose phone left keeps a half-sunk icon this long, in case it comes back. */
 const GRACE_MS = 60_000;
 /** The visible water, front to back (the pool's far wall is at z = -0.9). */
@@ -52,9 +58,15 @@ type Icon = {
   yaw: number;
   lift: number;
   liftV: number;
+  /** Dropping in from above, before it has hit the water. */
+  falling: boolean;
+  /** Tumble while falling (radians), settling once it floats. */
+  spin: number;
   material: ShaderMaterial;
   mesh?: Mesh | null;
 };
+
+type Splash = { key: number; at: number; material: ShaderMaterial };
 
 /** Half the visible width of the water at depth z, from the lobby camera. */
 function halfWidth(z: number) {
@@ -108,6 +120,8 @@ function makeIcon(
     yaw: (Math.random() * 2 - 1) * 0.15,
     lift: lift * size,
     liftV: 0,
+    falling: false,
+    spin: 0,
     material: iconMaterial(waterTime, textures[kind]),
   };
 }
@@ -140,6 +154,11 @@ export function SurfaceIcons({ clock, floaters }: { clock: EntryClock; floaters:
   live.current = icons;
   const baseline = useRef(false);
   const reduce = useRef(false);
+  const splashGeometry = useMemo(() => new PlaneGeometry(2, 2), []);
+  const [splashes, setSplashes] = useState<Splash[]>([]);
+  const liveSplashes = useRef(splashes);
+  liveSplashes.current = splashes;
+  const splashKey = useRef(0);
 
   useLayoutEffect(() => {
     const preference = matchMedia("(prefers-reduced-motion: reduce)");
@@ -160,9 +179,11 @@ export function SurfaceIcons({ clock, floaters }: { clock: EntryClock; floaters:
   }, [textures]);
   useEffect(() => () => {
     for (const icon of live.current) icon.material.dispose();
-  }, []);
+    for (const splash of liveSplashes.current) splash.material.dispose();
+    splashGeometry.dispose();
+  }, [splashGeometry]);
 
-  // Players on the first snapshot are already floating; later ones rise from below.
+  // Players on the first snapshot are already floating; later ones drop in from above with a splash.
   useEffect(() => {
     if (!floaters) return;
     const now = performance.now();
@@ -176,8 +197,11 @@ export function SurfaceIcons({ clock, floaters }: { clock: EntryClock; floaters:
         icon.goneAt = null;
         icon.connected = floater.connected;
       } else {
-        const fresh = makeIcon("person", clock.waterTime, textures, [...current, ...added], baseline.current ? START_DEPTH / PERSON_SIZE : PERSON_FLOAT, floater.id);
+        const drop = baseline.current && !reduce.current;
+        const fresh = makeIcon("person", clock.waterTime, textures, [...current, ...added], drop ? DROP_HEIGHT / PERSON_SIZE : PERSON_FLOAT, floater.id);
         fresh.connected = floater.connected;
+        fresh.falling = drop;
+        fresh.spin = drop ? (Math.random() * 2 - 1) * 0.5 : 0;
         added.push(fresh);
       }
     }
@@ -210,12 +234,27 @@ export function SurfaceIcons({ clock, floaters }: { clock: EntryClock; floaters:
 
     const list = live.current;
     let removed = false;
+    const splashed: Splash[] = [];
     for (const icon of list) {
       const target = targetLift(icon, now) * icon.size;
       if (still) {
         icon.lift = target;
         icon.liftV = 0;
+        icon.falling = false;
+        icon.spin = 0;
+      } else if (icon.falling) {
+        // Free fall, tumbling a little, until it meets the water.
+        icon.liftV -= GRAVITY * dt;
+        icon.lift += icon.liftV * dt;
+        icon.spin += Math.sign(icon.spin || 1) * dt * 0.7;
+        if (icon.lift <= target) {
+          icon.falling = false;
+          icon.lift = target;
+          icon.liftV *= PLUNGE;
+          splashed.push({ key: ++splashKey.current, at: now, material: splashMaterial(clock.waterTime, icon.x, icon.z, SPLASH_RADIUS) });
+        }
       } else {
+        icon.spin *= Math.exp(-dt * 2.2);
         // A slightly underdamped spring: a rising icon overshoots a little, then settles.
         icon.liftV += (7 * (target - icon.lift) - 3.6 * icon.liftV) * dt;
         icon.lift += icon.liftV * dt;
@@ -279,10 +318,24 @@ export function SurfaceIcons({ clock, floaters }: { clock: EntryClock; floaters:
       u.size.value = icon.size;
       // Rock and turn a little on top of what the waves do.
       u.yaw.value = icon.yaw + (still ? 0 : Math.sin(t * 0.27 + icon.seed * 1.3) * 0.15);
-      u.wobble.value = still ? 0 : Math.sin(t * 0.9 + icon.seed) * 0.09 + Math.sin(t * 0.37 + icon.seed * 2.1) * 0.05;
+      u.wobble.value = still ? 0 : Math.sin(t * 0.9 + icon.seed) * 0.09 + Math.sin(t * 0.37 + icon.seed * 2.1) * 0.05 + icon.spin;
       u.stretch.value = stretch;
       // The shader places the panel; the mesh position only sorts the transparent panels by depth.
       icon.mesh?.position.set(icon.x, WATER_SURFACE_Y + icon.lift, icon.z);
+    }
+
+    let splashesChanged = splashed.length > 0;
+    const keptSplashes = [...liveSplashes.current, ...splashed].filter((splash) => {
+      const age = (now - splash.at) / SPLASH_MS;
+      splash.material.uniforms.age.value = Math.min(1, age);
+      if (age < 1) return true;
+      splash.material.dispose();
+      splashesChanged = true;
+      return false;
+    });
+    if (splashesChanged) {
+      liveSplashes.current = keptSplashes;
+      setSplashes(keptSplashes);
     }
 
     if (removed) {
@@ -301,6 +354,9 @@ export function SurfaceIcons({ clock, floaters }: { clock: EntryClock; floaters:
       {icons.map((icon) => (
         <mesh key={icon.key} ref={(mesh) => { icon.mesh = mesh; }} geometry={geometries[icon.kind]}
           material={icon.material} frustumCulled={false} />
+      ))}
+      {splashes.map((splash) => (
+        <mesh key={splash.key} geometry={splashGeometry} material={splash.material} frustumCulled={false} renderOrder={-1} />
       ))}
     </>
   );

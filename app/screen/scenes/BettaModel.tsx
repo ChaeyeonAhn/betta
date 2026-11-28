@@ -18,7 +18,7 @@ const eyeRim = new MeshStandardMaterial({ color: "#9d82dc", roughness: 0.38 });
  * `at` = performance.now() when it appeared.
  */
 export type BettaMark = { hue: number; saturation: number; u: number; v: number; size: number; at: number };
-const MARK_FADE_MS = 1800;
+const MARK_FADE_MS = 700;
 
 const SWIMS = [
   { travel: 0.16, drift: 0.49, roll: 0.05, turn: 0.13, pulse: 1.0 }, // hover
@@ -99,7 +99,8 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
           slot.z = 0;
           continue;
         }
-        if (slot.z === 0) bettaBodyColor(mark.hue, mark.saturation, skin.uniforms.bettaMarkColors.value[i]);
+        // Marks can be replaced (the oldest goes when a fish is full), so the colour follows every frame.
+        bettaBodyColor(mark.hue, mark.saturation, skin.uniforms.bettaMarkColors.value[i]);
         slot.set(mark.u, mark.v, Math.min(1, Math.max(0.001, (now - mark.at) / MARK_FADE_MS)), mark.size);
       }
     }

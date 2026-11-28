@@ -12,9 +12,9 @@ import { createServer as createHttpsServer } from "node:https";
 import { Server, type Socket } from "socket.io";
 import { lanAddresses } from "../lib/lan.ts";
 import {
-  DECAY_PER_PLAYER,
   DEFAULT_ROOM,
   FILL_HOLD_MS,
+  FILL_MS,
   FEED_MS,
   GRID_MS,
   OPEN_MS,
@@ -45,6 +45,7 @@ const FEED_GRACE_MS = 750;
 const MAX_FEED_EVENTS = 10_000;
 /** Reconnect backlog still scores, but only current gestures animate. */
 const REACTION_FRESH_MS = 1500;
+const IDLE_REACTION_MS = 1800;
 /** Grid stage auto-break; env override is for tests. */
 const GRID_TIMEOUT_MS = Number(process.env.GRID_MS) || GRID_MS;
 /** Comma-separated page origins allowed to connect, e.g. the Vercel URL. Unset = any. */
@@ -66,14 +67,16 @@ type Player = {
   slot: number | null;
   openUntil: number | null;
   effort: number;
+  broken: boolean;
+  helping: number | null;
+  /** Epoch ms of the last idle (dwell) reaction, so scrolling shows one face at a time. */
+  idleAt: number;
 };
 
 const session = {
   roundId: randomUUID(),
   stage: "lobby" as Stage,
   players: new Map<string, Player>(),
-  effortTotal: 0,
-  effortThreshold: 0,
   deadline: null as number | null,
   /** Player count the grid layout is built for; only grows during a round so cells keep their place. */
   gridSize: 0,
@@ -98,7 +101,46 @@ function newPlayer(id: string): Player {
     slot: null,
     openUntil: null,
     effort: 0,
+    broken: false,
+    helping: null,
+    idleAt: 0,
   };
+}
+
+// ---------------------------------------------------------------- grid cells
+
+/** Grid stage: the cells that have to be broken, one per grown betta with a seat. */
+const cells = () => withGenome().filter((p) => p.slot !== null);
+const closedCells = () => cells().filter((p) => !p.broken);
+const cellAt = (slot: number | null) => slot === null ? undefined : cells().find((p) => p.slot === slot);
+/** Out of its cell (or never had one): its taps go to whichever cell it is helping. */
+const isFree = (p: Player) => p.genome !== null && (p.broken || p.slot === null);
+
+/** The closed cell nearest to `from` (a slot), or any closed one. */
+function nearestClosed(from: number | null): number | null {
+  const closed = closedCells();
+  if (!closed.length) return null;
+  if (from === null) return closed[0].slot;
+  const { slots } = createGridLayout(Math.max(1, session.gridSize));
+  const origin = slots[from];
+  const distance = (slot: number) => Math.hypot(slots[slot].x - origin.x, slots[slot].y - origin.y);
+  return closed.map((p) => p.slot!).sort((a, b) => distance(a) - distance(b))[0];
+}
+
+/** A cell gives way: its betta is out, and everyone who was on it moves to the nearest closed one. */
+function breakCell(owner: Player) {
+  owner.broken = true;
+  owner.effort = TAPS_PER_PLAYER;
+  if (!closedCells().length) {
+    console.log("walls down: every cell broken");
+    setStage("open");
+    return;
+  }
+  for (const player of session.players.values()) {
+    if (isFree(player) && (player === owner || player.helping === owner.slot || cellAt(player.helping)?.broken !== false)) {
+      player.helping = nearestClosed(owner.slot);
+    }
+  }
 }
 
 function setGenome(player: Player, genome: Genome) {
@@ -155,8 +197,11 @@ function setStage(stage: Stage) {
   session.deadline = null;
   session.fillAt = null;
   if (stage === "input") session.gridSize = Math.max(session.gridSize, session.players.size);
-  // Hold the completed adults without manufacturing filler fish or a zoom-out.
-  if (stage === "born") session.deadline = Date.now() + FILL_HOLD_MS;
+  // Everyone is grown: placeholders fill every other cell while the camera pulls back, then the full grid holds.
+  if (stage === "born") {
+    session.fillAt = Date.now();
+    session.deadline = session.fillAt + FILL_MS + FILL_HOLD_MS;
+  }
 
   for (const player of session.players.values()) {
     if (stage === "input") {
@@ -168,11 +213,16 @@ function setStage(stage: Stage) {
     if (player.phase !== "fading" || stage === "input") player.phase = phaseForStage(stage);
   }
 
+  if (stage === "input" || stage === "grid") {
+    for (const player of session.players.values()) {
+      player.effort = 0;
+      player.broken = false;
+      player.helping = null;
+    }
+  }
   if (stage === "grid") {
-    session.effortTotal = 0;
-    session.effortThreshold = Math.max(1, withGenome().length) * TAPS_PER_PLAYER;
     session.deadline = Date.now() + GRID_TIMEOUT_MS;
-    for (const player of session.players.values()) player.effort = 0;
+    for (const player of session.players.values()) if (isFree(player)) player.helping = nearestClosed(null);
   }
   if (stage === "open") {
     for (const player of session.players.values()) if (player.genome) player.openUntil = Date.now() + OPEN_MS;
@@ -188,7 +238,6 @@ function reset() {
     if (!player.socketId) session.players.delete(id);
     else session.players.set(id, { ...newPlayer(id), socketId: player.socketId });
   }
-  session.effortTotal = 0;
   session.gridSize = 0;
   setStage("lobby");
 }
@@ -229,9 +278,14 @@ function snapshot(): SessionState {
       released: p.released,
       slot: p.slot,
       openUntil: p.openUntil,
-      effort: p.effort,
+      effort: Math.round(p.effort),
+      broken: p.broken,
+      helping: p.helping,
     })),
-    effort: { total: Math.round(session.effortTotal), threshold: session.effortThreshold },
+    effort: {
+      total: cells().reduce((sum, p) => sum + Math.min(TAPS_PER_PLAYER, p.effort), 0),
+      threshold: cells().length * TAPS_PER_PLAYER,
+    },
     deadline: session.deadline,
     fillAt: session.fillAt,
     gridSize: Math.max(1, session.gridSize),
@@ -344,26 +398,38 @@ io.on("connection", (socket) => {
       if (player.feedIds.has(id) || player.feed.length >= MAX_FEED_EVENTS) continue;
       player.feedIds.add(id);
       player.feed.push(event);
-      const kind = reactionFor[event.kind];
-      if (event.intent === true && kind && elapsed - event.t <= REACTION_FRESH_MS) {
-        io.to("screens").emit("reaction", { roundId: session.roundId, playerId: player.id, kind });
-      }
+      if (elapsed - event.t > REACTION_FRESH_MS) continue;
+      // Just scrolling is a reaction too: a blank face, at most one per IDLE_REACTION_MS.
+      const idle = event.kind === "dwell";
+      const kind = idle ? "serious" : event.intent === true ? reactionFor[event.kind] : undefined;
+      if (!kind || (idle && now - player.idleAt < IDLE_REACTION_MS)) continue;
+      if (idle) player.idleAt = now;
+      io.to("screens").emit("reaction", { roundId: session.roundId, playerId: player.id, kind });
     }
     if (done && elapsed >= FEED_MS) finishFeed(player);
     scheduleBroadcast();
   });
 
+  // A tap goes to the player's own glass, or, once they are out, to the cell they are helping.
   socket.on("effort", ({ amount }) => {
     const player = playerOf(socket);
-    if (!player) return;
-    if (session.stage !== "grid" || !player.genome) return;
-    const taps = Math.min(3, Math.max(0, Math.round(amount)));
-    player.effort += taps;
-    session.effortTotal += taps;
-    if (session.effortTotal >= session.effortThreshold) {
-      console.log("walls down: together");
-      setStage("open");
-    }
+    if (!player || session.stage !== "grid" || !player.genome) return;
+    const taps = Math.min(3, Math.max(0, Math.round(Number(amount) || 0)));
+    if (!taps) return;
+    if (isFree(player) && cellAt(player.helping)?.broken !== false) player.helping = nearestClosed(player.slot);
+    const cell = isFree(player) ? cellAt(player.helping) : player;
+    if (!cell || cell.broken) return;
+    cell.effort += taps;
+    if (cell.effort >= TAPS_PER_PLAYER) breakCell(cell);
+    scheduleBroadcast();
+  });
+
+  socket.on("help", ({ slot }) => {
+    const player = playerOf(socket);
+    if (!player || session.stage !== "grid" || !isFree(player)) return;
+    const cell = cellAt(Number.isInteger(slot) ? slot : null);
+    if (!cell || cell.broken || player.helping === cell.slot) return;
+    player.helping = cell.slot;
     scheduleBroadcast();
   });
 
@@ -415,11 +481,12 @@ setInterval(() => {
     setStage("grid");
   }
   if (session.stage !== "grid") return;
-  const pushing = withGenome().filter((p) => p.socketId).length;
-  const leak = Math.max(1, pushing) * DECAY_PER_PLAYER * (TICK_MS / 1000);
-  if (session.effortTotal > 0) {
-    session.effortTotal = Math.max(0, session.effortTotal - leak);
-    scheduleBroadcast();
+  // Visitors who finish late, or whose cell went from under them, find a closed cell to help.
+  for (const player of session.players.values()) {
+    if (isFree(player) && cellAt(player.helping)?.broken !== false) {
+      player.helping = nearestClosed(player.slot);
+      scheduleBroadcast();
+    }
   }
   if (session.deadline && Date.now() >= session.deadline) {
     console.log("walls down: timeout");

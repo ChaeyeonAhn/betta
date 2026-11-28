@@ -8,9 +8,10 @@
 //   sociability  pull towards (and matching speed with) fish with a similar genome
 //   walls        soft push back from the stage edges
 // No fighting: relations show only as drifting together or keeping distance.
-// Meetings (encounters.ts): two that swim together take on each other's colour,
-// a fleck at first, then more and larger patches the longer they stay;
-// two that collide are knocked apart.
+// Meetings (encounters.ts): any two that meet (drift close or collide) leave
+// a vivid patch of colour on each other at once; the longer two swim
+// together, the more and larger the patches.
+// Two that collide are also knocked apart.
 // Positions live in refs shared by the WebGL tank and the screen-space tags.
 
 import { Hint } from "@/app/_components/Hint";
@@ -25,7 +26,9 @@ import { BettaCanvas, BettaVisual, stagePoint } from "./BettaCanvas";
 import { BettaModel, type BettaMark } from "./BettaModel";
 import { MAX_MARKS } from "./bettaMaterial";
 import { createEncounters } from "./encounters";
-import { createGridLayout, projectedFishCenter, STAGE_H, STAGE_W } from "./gridLayout";
+import {
+  createGridLayout, GRID_CAMERA_DISTANCE, GRID_FISH, projectedFishCenter, STAGE_H, STAGE_W, type GridHandoff,
+} from "./gridLayout";
 import styles from "./Open.module.css";
 import { swimmingPitch } from "./swimmingPitch";
 import { advanceWater, advanceWakes, createWaterCurrent, projectTankPoint, TANK_CAMERA_DISTANCE, TANK_DEPTH, waterAt, type WaterCurrent } from "./waterCurrent";
@@ -34,6 +37,10 @@ import { WaterTank } from "./WaterTank";
 
 const FISH = 150; // BettaShape width in the tank
 const FISH_H = FISH * 0.7;
+/** The 3D betta's length at depth 0. */
+const MODEL = FISH * 0.58;
+/** Without WebGL nothing reports ready; start the swimming anyway. */
+const READY_FALLBACK_MS = 2500;
 const MAX_SPEED = 280;
 const EDGE = 80;
 const SIMILAR = 0.7; // genomeDistance below this = "like me"
@@ -41,10 +48,12 @@ const SIMILAR = 0.7; // genomeDistance below this = "like me"
 const KNOCK = 420;
 const KNOCK_DECAY = 3.2;
 /** Swimming together: another patch of the partner's colour every this many seconds, */
-const SPREAD_S = 8;
-/** while each of that partner's patches grows this much per second, up to MARK_MAX_SIZE (1 = the first fleck). */
-const MARK_GROW = 0.03;
-const MARK_MAX_SIZE = 1.7;
+const SPREAD_S = 3.5;
+/** while each of that partner's patches grows this much per second, up to MARK_MAX_SIZE (1 = a fleck). */
+const MARK_GROW = 0.09;
+const MARK_MAX_SIZE = 2.3;
+/** The patch any meeting leaves, at once. */
+const MEET_SIZE = 1.45;
 const STEER_STALE_MS = 800;
 
 type Fish = {
@@ -59,10 +68,17 @@ type Fish = {
   bonds: Map<string, number>;
 };
 
-export function Open({ players, gridSize, socket }: {
+/**
+ * `handoff`: where the grid last showed each betta; they start there and hold
+ * still until this tank has drawn its first frame (`onReady`), so the grid can
+ * fade over them without a jump.
+ */
+export function Open({ players, gridSize, socket, handoff, onReady }: {
   players: PlayerView[];
   gridSize: number;
   socket: RefObject<BettaSocket | null>;
+  handoff?: GridHandoff;
+  onReady?: () => void;
 }) {
   const bettas = players.filter((p) => p.genome);
   const steering = useSteering(bettas);
@@ -72,30 +88,53 @@ export function Open({ players, gridSize, socket }: {
   const flips = useRef(new Map<string, HTMLDivElement>());
   const steers = useRef(new Map<string, Steer & { at: number }>());
   const current = useRef<WaterCurrent>(createWaterCurrent());
+  const ready = useRef(false);
+  const readyCallback = useRef(onReady);
+  readyCallback.current = onReady;
+  const markReady = useRef(() => {
+    if (ready.current) return;
+    ready.current = true;
+    readyCallback.current?.();
+  }).current;
+  useEffect(() => {
+    const timer = setTimeout(markReady, READY_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [markReady]);
 
-  // Keep the sim in step with who has a betta. New fish start in their grid
-  // cell and drift out of it as the grid fades (Screen.tsx); late fish enter from an edge.
+  // Keep the sim in step with who has a betta. The ones from the grid start
+  // exactly where the grid last showed them (in their cell, or at the glass
+  // they were helping), at the depth that keeps their size, and swim on from
+  // there as the grid fades (Screen.tsx); late fish enter from an edge.
   const firstFrame = fish.current.size === 0;
   bettas.forEach((p) => {
     if (fish.current.has(p.id)) return;
-    const start = p.slot === null ? undefined : opening.slots[p.slot];
-    const c = firstFrame && start
-      ? projectedFishCenter(start, opening.side)
-      : { x: Math.random() < 0.5 ? -FISH : STAGE_W + FISH, y: STAGE_H * (0.2 + Math.random() * 0.6) };
-    const away = Math.atan2(c.y - STAGE_H / 2, c.x - STAGE_W / 2) + (Math.random() - 0.5) * 0.8;
-    const speed = firstFrame ? 40 + Math.random() * 50 : 160;
-    const vx = firstFrame ? Math.cos(away) * speed : (c.x < 0 ? 1 : -1) * speed;
-    const vy = firstFrame ? Math.sin(away) * speed : 0;
+    const { slots, side } = opening;
+    const start = p.slot === null ? undefined : slots[p.slot];
+    // Out of its cell on the grid: wherever it had swum to. Otherwise the grid still showed it in its cell.
+    const inCell = side * GRID_FISH * GRID_CAMERA_DISTANCE / (GRID_CAMERA_DISTANCE + side / 2);
+    const seen = !firstFrame ? undefined
+      : handoff?.get(p.id) ?? (start ? { ...projectedFishCenter(start, side), size: inCell } : undefined);
     const preferredDepth = 130 + Math.random() * 520;
+    let c = { x: Math.random() < 0.5 ? -FISH : STAGE_W + FISH, y: STAGE_H * (0.2 + Math.random() * 0.6) };
+    let depth = preferredDepth;
+    if (seen) {
+      depth = MathUtils.clamp(TANK_CAMERA_DISTANCE * (MODEL / seen.size - 1), 0, TANK_DEPTH - 60);
+      const scale = TANK_CAMERA_DISTANCE / (TANK_CAMERA_DISTANCE + depth);
+      c = { x: STAGE_W / 2 + (seen.x - STAGE_W / 2) / scale, y: STAGE_H / 2 + (seen.y - STAGE_H / 2) / scale };
+    }
+    const away = Math.atan2(c.y - STAGE_H / 2, c.x - STAGE_W / 2) + (Math.random() - 0.5) * 0.8;
+    const speed = seen ? 40 + Math.random() * 50 : 160;
+    const vx = seen ? Math.cos(away) * speed : (c.x < 0 ? 1 : -1) * speed;
+    const vy = seen ? Math.sin(away) * speed : 0;
     fish.current.set(p.id, {
-      x: c.x, y: c.y, depth: firstFrame ? 0 : preferredDepth, preferredDepth,
+      x: c.x, y: c.y, depth, preferredDepth,
       vx, vy, screenVx: vx, screenVy: vy, wander: Math.random() * Math.PI * 2,
       dir: vx < 0 ? -1 : 1, genome: p.genome!, kx: 0, ky: 0, marks: [], bonds: new Map(),
     });
   });
   for (const id of fish.current.keys()) if (!bettas.some((p) => p.id === id)) fish.current.delete(id);
 
-  // Joystick input relayed by the server.
+  // Tilt steering relayed by the server.
   useEffect(() => {
     const s = socket.current;
     if (!s) return;
@@ -114,6 +153,11 @@ export function Open({ players, gridSize, socket }: {
     const tick = (now: number) => {
       const dt = Math.min(0.05, Math.max(0.001, (now - last) / 1000));
       last = now;
+      // Hold everyone where the grid left them until this tank is on screen.
+      if (!ready.current) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       const all = [...fish.current.entries()];
       if (all.length < fishCount) encounters.prune(fish.current);
       fishCount = all.length;
@@ -142,6 +186,10 @@ export function Open({ players, gridSize, socket }: {
           const dy = o.y - f.y;
           const d = Math.hypot(dx, dy, (o.depth - f.depth) * 0.65) || 1;
           const met = id < otherId ? encounters.pair(now, dt, id, f, otherId, o, d) : null;
+          if (met === "bump" || met === "near") {
+            meet(f, otherId, o.genome, now);
+            meet(o, id, g, now);
+          }
           if (met === "bump") {
             const flat = Math.hypot(dx, dy) || 1;
             f.kx -= (dx / flat) * KNOCK;
@@ -213,6 +261,7 @@ export function Open({ players, gridSize, socket }: {
       <BettaVisual fallback={null}>
         <BettaCanvas distance={TANK_CAMERA_DISTANCE} scenery={<WaterTank current={current} />}>
           <CurrentTraces current={current} sources={fish} />
+          <FirstFrames onDrawn={markReady} />
           {bettas.map((p) => <OpenBetta key={p.id} id={p.id} genome={p.genome!} fish={fish} />)}
         </BettaCanvas>
       </BettaVisual>
@@ -243,21 +292,30 @@ export function Open({ players, gridSize, socket }: {
   );
 }
 
+/** Leave a patch of `genome`'s colour on `fish`, vivid whatever the partner's own saturation; a full fish loses its oldest. */
+function addMark(fish: Fish, partner: string, genome: Genome, size: number, now: number) {
+  if (fish.marks.length >= MAX_MARKS) fish.marks.shift();
+  fish.marks.push({
+    from: partner, hue: genome.hue, saturation: Math.max(0.9, genome.saturation),
+    u: 0.26 + Math.random() * 0.46, v: (Math.random() - 0.5) * 0.18, size, at: now,
+  });
+}
+
+/** Any meeting, however brief: each takes a patch of the other's colour at once. */
+function meet(fish: Fish, partner: string, genome: Genome, now: number) {
+  addMark(fish, partner, genome, MEET_SIZE, now);
+}
+
 /**
- * One frame of swimming with `partner`: the first moment leaves a fleck of its
- * colour, every SPREAD_S together adds another, and all of its patches keep
- * growing. Patches stay when they part; meeting again picks up where they left off.
+ * One frame of swimming with `partner`: every SPREAD_S together adds another
+ * patch of its colour, and all of its patches keep growing. Patches stay when
+ * they part; meeting again picks up where they left off.
  */
 function takeOn(fish: Fish, partner: string, genome: Genome, dt: number, now: number) {
   const before = fish.bonds.get(partner) ?? 0;
   const after = before + dt;
   fish.bonds.set(partner, after);
-  if ((before === 0 || Math.floor(after / SPREAD_S) > Math.floor(before / SPREAD_S)) && fish.marks.length < MAX_MARKS) {
-    fish.marks.push({
-      from: partner, hue: genome.hue, saturation: genome.saturation,
-      u: 0.3 + Math.random() * 0.38, v: (Math.random() - 0.5) * 0.16, size: 1, at: now,
-    });
-  }
+  if (Math.floor(after / SPREAD_S) > Math.floor(before / SPREAD_S)) addMark(fish, partner, genome, 1, now);
   for (const mark of fish.marks) {
     if (mark.from === partner) mark.size = Math.min(MARK_MAX_SIZE, mark.size + MARK_GROW * dt);
   }
@@ -280,9 +338,18 @@ function OpenBetta({ id, genome, fish }: { id: string; genome: Genome; fish: Ref
 
   return (
     <group ref={model} rotation-y={initialYaw.current}>
-      <BettaModel genome={genome} seed={id} size={FISH * 0.58} followHeading marks={() => fish.current.get(id)?.marks} />
+      <BettaModel genome={genome} seed={id} size={MODEL} followHeading marks={() => fish.current.get(id)?.marks} />
     </group>
   );
+}
+
+/** Calls `onDrawn` once the tank has drawn a couple of frames with its bettas loaded (it sits in their Suspense). */
+function FirstFrames({ onDrawn }: { onDrawn: () => void }) {
+  const frames = useRef(0);
+  useFrame(() => {
+    if (++frames.current === 3) onDrawn();
+  });
+  return null;
 }
 
 /**

@@ -59,8 +59,12 @@ export type PlayerView = {
   slot: number | null;
   /** Open stage: epoch ms when this visitor's time with the joystick ends and their betta card appears. */
   openUntil: number | null;
-  /** Grid stage: taps this player put into their own wall. */
+  /** Grid stage: taps on this player's cell, from them and from anyone helping. */
   effort: number;
+  /** Grid stage: this player's cell is broken and their betta is out. */
+  broken: boolean;
+  /** Grid stage, once out (or without a cell): the slot whose glass their taps go to. */
+  helping: number | null;
 };
 
 export type SessionState = {
@@ -73,7 +77,7 @@ export type SessionState = {
   effort: { total: number; threshold: number };
   /** Epoch ms when the current timed stage auto-advances, or null. */
   deadline: number | null;
-  /** Legacy placeholder clock. New creation rounds keep this null. */
+  /** Born stage: epoch ms when placeholder bettas started filling the empty cells, or null. */
   fillAt: number | null;
   /** Player count the grid layout is built for: createGridLayout(gridSize). */
   gridSize: number;
@@ -100,6 +104,8 @@ export type ClientToServer = {
   /** Start is idempotent; done is accepted only once the server's 45s has elapsed. */
   feed: (batch: FeedBatch) => void;
   effort: (effort: { amount: number }) => void;
+  /** Grid stage, once out: tap this cell's glass instead (must be a cell still closed). */
+  help: (help: { slot: number }) => void;
   /** Born stage: send my betta from the phone to the screen. */
   release: () => void;
   steer: (steer: Steer) => void;
@@ -114,19 +120,21 @@ export type ServerToClient = {
 
 export const FEED_MS = 45_000;
 
-/** Grid stage: walls break when the room's taps reach players × TAPS_PER_PLAYER, or after GRID_MS. */
+/**
+ * Grid stage: each cell breaks on its own at TAPS_PER_PLAYER taps (its owner's
+ * and its helpers'); the tank opens when the last one breaks, or after GRID_MS.
+ */
 export const GRID_MS = 60_000;
 export const TAPS_PER_PLAYER = 30;
-/** The shared total leaks this many taps per second per player, so everyone has to keep pushing. */
-export const DECAY_PER_PLAYER = 2;
 export const DEFAULT_ROOM = "betta";
 
 /**
- * FILL_MS is retained for older scene consumers. New rounds hold the actual
- * completed adults for FILL_HOLD_MS without filling empty cells.
+ * Born stage: once every visitor's betta is grown, the camera pulls back while
+ * placeholder bettas fill every other cell over FILL_MS; the full grid holds
+ * for FILL_HOLD_MS, then the camera comes back in for the walls.
  */
 export const FILL_MS = 14_000;
-export const FILL_HOLD_MS = 20_000;
+export const FILL_HOLD_MS = 8_000;
 /** A betta with a genome that hasn't been released after this long is released for the visitor. */
 export const RELEASE_TIMEOUT_MS = 30_000;
 /** Open stage: each visitor steers for this long, then gets their betta card. */

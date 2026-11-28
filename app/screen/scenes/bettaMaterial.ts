@@ -1,7 +1,7 @@
 import { Color, DoubleSide, MeshStandardMaterial, SRGBColorSpace, Vector4, type Texture } from "three";
 
 /** Patches of other bettas' colour a body can carry (open stage, from swimming together). */
-export const MAX_MARKS = 8;
+export const MAX_MARKS = 12;
 
 /** A betta's body colour; also what it leaves on the bettas it swims with. */
 export const bettaBodyColor = (hue: number, saturation: number, target = new Color()) =>
@@ -151,7 +151,7 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
             float my = min(abs(uv.y - (.75 - mark.y)), abs(uv.y - (.25 + mark.y))) / (.12 * mark.w);
             float rag = (bettaNoise(uv * vec2(38., 30.) + float(i) * 5.3 + bettaSeed * 11.) - .5) * .6;
             float blob = 1. - smoothstep(.5, 1., length(vec2(mx, my)) + rag);
-            paint = mix(paint, mix(paper, bettaMarkColors[i], .88), blob * mark.z);
+            paint = mix(paint, bettaMarkColors[i], blob * mark.z);
           }
           vec2 scales = uv*vec2(21.,12.);
           scales.y += .5*mod(floor(scales.x),2.);

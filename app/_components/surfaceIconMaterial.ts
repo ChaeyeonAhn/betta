@@ -78,6 +78,55 @@ const fragment = /* glsl */ `
   }
 `;
 
+// A splash where a falling icon hits the water: two rings spreading on the
+// same wave surface, fading as they go.
+const splashVertex = /* glsl */ `
+  uniform float waterTime;
+  uniform vec2 center;
+  uniform float radius;
+  varying vec2 vLocal;
+
+  ${waterRoof}
+
+  void main() {
+    vLocal = position.xy;
+    vec2 at = center + vec2(position.x, -position.y) * radius;
+    float height = wsRoof(at, waterTime, vec2(0.0));
+    gl_Position = projectionMatrix * viewMatrix * vec4(at.x, height + 0.004, at.y, 1.0);
+  }
+`;
+
+const splashFragment = /* glsl */ `
+  uniform float age;
+  varying vec2 vLocal;
+  void main() {
+    float r = length(vLocal);
+    float outer = age * 0.95;
+    float inner = max(0.0, age - 0.18) * 0.75;
+    float ring = exp(-pow((r - outer) / 0.045, 2.0)) + 0.65 * exp(-pow((r - inner) / 0.035, 2.0));
+    float foam = (1.0 - smoothstep(0.0, 0.22, r)) * (1.0 - smoothstep(0.0, 0.3, age)) * 0.8;
+    float alpha = (ring + foam) * pow(1.0 - age, 1.4) * step(r, 1.0);
+    if (alpha < 0.01) discard;
+    gl_FragColor = vec4(0.93, 0.97, 0.98, min(1.0, alpha));
+  }
+`;
+
+export function splashMaterial(waterTime: Uniform<number>, x: number, z: number, radius: number) {
+  return new ShaderMaterial({
+    uniforms: {
+      waterTime,
+      center: { value: new Vector2(x, z) },
+      radius: { value: radius },
+      age: { value: 0 },
+    },
+    vertexShader: splashVertex,
+    fragmentShader: splashFragment,
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  });
+}
+
 /** The picture is sampled raw (no colour space), so it shows as drawn, like the pool shader's colours. */
 export function iconMaterial(waterTime: Uniform<number>, map: Texture) {
   return new ShaderMaterial({

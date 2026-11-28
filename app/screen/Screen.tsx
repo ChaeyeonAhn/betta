@@ -10,12 +10,12 @@ import { WATER_ENTRY_MS, WATER_ENTRY_REDUCED_MS, type WaterEntry } from "@/app/_
 import { Grid } from "./scenes/Grid";
 import { preloadGridReactions, REACTION_MS, type GridReactionEvent } from "./scenes/GridReaction";
 import { Open } from "./scenes/Open";
-import { STAGE_H, STAGE_W } from "./scenes/gridLayout";
+import { STAGE_H, STAGE_W, type GridHandoff } from "./scenes/gridLayout";
 import { useAmbience } from "./useAmbience";
 import styles from "./screen.module.css";
 
 const GRID_FADE_MS = 2200;
-const MAX_REACTIONS = 64;
+const MAX_REACTIONS = 240;
 
 type Props = {
   room: string;
@@ -27,7 +27,7 @@ type Props = {
 // R = reset, P = drop disconnected phones, H = hide the player count and the size control.
 export function Screen({ room, adminKey, socketUrl }: Props) {
   const hello = useMemo<Hello>(() => ({ role: "screen", room, adminKey }), [room, adminKey]);
-  const { state, connected, socket } = useBetta(hello, socketUrl);
+  const { state, clockOffset, connected, socket } = useBetta(hello, socketUrl);
   const [hud, setHud] = useState(true);
   const [diveArmed, setDiveArmed] = useState(false);
   const onDiveEnd = useCallback(() => setDiveArmed(false), []);
@@ -112,17 +112,28 @@ export function Screen({ room, adminKey, socketUrl }: Props) {
   const lobby = !state || stage === "lobby";
   const entry: WaterEntry = lobby ? "lobby" : "diving";
   const caged = stage === "input" || stage === "born" || stage === "grid";
-  // When the walls come down, the empty grid stays a moment over the open tank and fades away.
+  // When the walls come down, the same grid (same canvas, so nothing reloads)
+  // stays as it was over the open tank until that tank has drawn its first
+  // frame with every betta where the grid showed it; then the grid's water
+  // goes, its bettas hand over and the cages fade away.
   const lastGrid = useRef<SessionState | null>(null);
   if (stage === "grid" && state) lastGrid.current = state;
-  const [leaving, setLeaving] = useState<SessionState | null>(null);
+  const handoff = useRef<GridHandoff>(new Map());
+  const [openReady, setOpenReady] = useState(false);
+  const onOpenReady = useCallback(() => setOpenReady(true), []);
+  const [faded, setFaded] = useState(false);
+  const leaving = stage === "open" && !faded && lastGrid.current?.roundId === state?.roundId ? lastGrid.current : null;
   useEffect(() => {
-    if (stage !== "open" || !lastGrid.current || state?.roundId !== lastGrid.current.roundId) return;
-    setLeaving(lastGrid.current);
-    lastGrid.current = null;
-    const timer = setTimeout(() => setLeaving(null), GRID_FADE_MS);
-    return () => clearTimeout(timer);
+    setOpenReady(false);
+    setFaded(false);
+    if (stage !== "open") handoff.current.clear();
   }, [stage, state?.roundId]);
+  useEffect(() => {
+    if (!openReady) return;
+    const timer = setTimeout(() => setFaded(true), GRID_FADE_MS);
+    return () => clearTimeout(timer);
+  }, [openReady]);
+  const gridState = caged ? state : leaving;
 
   return (
     <main className={styles.root} data-stage={stage} data-connected={connected}>
@@ -131,13 +142,14 @@ export function Screen({ room, adminKey, socketUrl }: Props) {
         height: STAGE_H,
         transform: `translate(calc(-50% + ${projection.offset.x}px), calc(-50% + ${projection.offset.y}px)) scale(${projection.scale.x / 100}, ${projection.scale.y / 100})`,
       }}>
-        {caged && state && (
-          <Grid key={state.roundId} state={state} reactions={reactions.filter(({ roundId }) => roundId === state.roundId)} />
+        {stage === "open" && state && (
+          <Open players={players} gridSize={state.gridSize} socket={socket} handoff={handoff.current} onReady={onOpenReady} />
         )}
-        {stage === "open" && state && <Open players={players} gridSize={state.gridSize} socket={socket} />}
-        {stage === "open" && leaving && leaving.roundId === state?.roundId && (
-          <div className={styles.gridLeaving} style={{ animationDuration: `${GRID_FADE_MS}ms` }}>
-            <Grid state={leaving} leaving />
+        {gridState && (
+          <div key={gridState.roundId} className={styles.gridLayer} data-leaving={!caged && openReady}
+            style={{ animationDuration: `${GRID_FADE_MS}ms` }}>
+            <Grid state={gridState} clockOffset={clockOffset} handoff={handoff.current} leaving={!caged && openReady}
+              reactions={caged ? reactions.filter(({ roundId }) => roundId === gridState.roundId) : undefined} />
           </div>
         )}
         {(lobby || diving) && (

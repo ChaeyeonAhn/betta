@@ -3,7 +3,8 @@
 // Open stage: what happens when two bettas meet.
 //   bump      they run into each other: a burst of bubbles (bubble-cluster),
 //             and Open knocks them apart
-//   near      they drift close: a low gulp (bubble-gulp)
+//   near      they drift close: a low gulp (bubble-gulp); reported, and Open
+//             has each leave a patch of its colour on the other
 //   together  they swim side by side, heading the same way, for a while:
 //             reported every frame it lasts, and Open lets each take on more
 //             and more of the other's colour
@@ -41,7 +42,7 @@ const TOGETHER_CAP_S = TOGETHER_S + 1;
 
 type Fish = { x: number; depth: number; vx: number; vy: number; genome: Genome };
 type Pair = { near: boolean; bump: boolean; nearQuiet: number; bumpQuiet: number; together: number };
-export type Encounter = "bump" | "together" | null;
+export type Encounter = "bump" | "near" | "together" | null;
 
 export function createEncounters(start: number) {
   const sounds = Promise.all([loadSound(CLUSTER), loadSound(GULP)]);
@@ -89,6 +90,7 @@ export function createEncounters(start: number) {
 
       if (!p.near && d < NEAR) {
         p.near = true;
+        if (listening && !event) event = "near";
         if (listening && now > p.nearQuiet && !p.bump) {
           p.nearQuiet = now + PAIR_COOLDOWN_MS;
           play(now, "near", a, b);
