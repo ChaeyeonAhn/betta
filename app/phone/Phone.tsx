@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
 import { getPlayerId, shortTag } from "@/lib/playerId";
-import type { FeedEvent, Hello, Steer } from "@/lib/protocol";
+import type { ClientToServer, Hello, Steer } from "@/lib/protocol";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import { unlockAudio } from "@/app/_components/sound";
 import { BettaCard } from "./card/BettaCard";
 import { Joystick } from "./controls/Joystick";
 import { FakeFeed } from "./modes/FakeFeed";
-import { Release } from "./Release";
 import { LookAround } from "./LookAround";
 import { Cell } from "./Cell";
 import styles from "./phone.module.css";
@@ -18,48 +17,47 @@ export function Phone({ room, socketUrl }: { room: string; socketUrl: string | n
   // The id lives in localStorage, so it can only be read after mount.
   const [hello, setHello] = useState<Hello | null>(null);
   useEffect(() => setHello({ role: "phone", room, playerId: getPlayerId() }), [room]);
-  // Taps in the feed and the release swipe unlock audio before the cell needs it.
+  // Taps in the feed unlock audio before the cell needs it.
   useEffect(unlockAudio, []);
 
-  const { state, connected, rejected, socket } = useBetta(hello, socketUrl);
+  const { state, clockOffset, connected, rejected, socket } = useBetta(hello, socketUrl);
   const me = state?.players.find((p) => hello?.role === "phone" && p.id === hello.playerId);
 
   const sendFeed = useCallback(
-    (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => socket.current?.emit("feed", batch),
+    (batch: Parameters<ClientToServer["feed"]>[0]) => {
+      const current = socket.current;
+      if (!current?.connected) return;
+      current.emit("feed", batch);
+    },
     [socket],
   );
   const sendSteer = useCallback((steer: Steer) => socket.current?.emit("steer", steer), [socket]);
   const cardDue = useAfter(me?.openUntil ?? null);
-  // A swipe on this phone plays the fish flying off before the phone becomes its cell.
-  const [flight, setFlight] = useState<"none" | "flying" | "landed">("none");
 
   if (rejected) return <Centered>{rejected}</Centered>;
-  if (!connected || !me || !state) return <Centered dim>Connecting to the tank…</Centered>;
+  if (!me || !state) return <Centered dim>Connecting to the tank…</Centered>;
 
-  if (me.phase === "input" && !me.done) return <FakeFeed send={sendFeed} playerId={me.id} />;
+  // Late arrivals do their own feed even after the shared round has advanced.
+  if (me.phase === "input" || state.stage === "input" || state.stage === "born") {
+    return (
+      <FakeFeed
+        key={`${state.roundId}:${me.id}`}
+        storageKey={`betta-feed:${state.room}:${me.id}`}
+        roundId={state.roundId}
+        startedAt={me.feedStartedAt}
+        clockOffset={clockOffset}
+        done={me.done}
+        connected={connected}
+        send={sendFeed}
+      />
+    );
+  }
 
-  // Once the betta has grown, until the walls break: release it, then be it,
-  // inside its cell. Late arrivals without a cell just look around.
-  const caged = state.stage === "born" || state.stage === "grid" || state.stage === "input";
-  if (caged && me.genome) {
-    if (me.released && me.slot !== null && flight !== "flying") {
-      return <Cell state={state} me={me} slot={me.slot} onPush={() => socket.current?.emit("effort", { amount: 1 })} />;
-    }
-    if (state.stage !== "grid" && (!me.released || flight === "flying")) {
-      return (
-        <Release
-          genome={me.genome}
-          playerId={me.id}
-          released={me.released}
-          onRelease={() => {
-            setFlight("flying");
-            socket.current?.emit("release");
-          }}
-          onGone={() => setFlight("landed")}
-        />
-      );
-    }
-    return <LookAround />;
+  if (!connected) return <Centered dim>Connecting to the tank…</Centered>;
+
+  if (state.stage === "grid" && me.genome) {
+    if (me.slot === null) return <LookAround />;
+    return <Cell state={state} me={me} slot={me.slot} onPush={() => socket.current?.emit("effort", { amount: 1 })} />;
   }
 
   if (state.stage === "open" && me.genome && cardDue) {

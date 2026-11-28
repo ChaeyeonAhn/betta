@@ -1,210 +1,153 @@
 "use client";
 
-// 45 seconds in a fake SNS app, with your betta living above it.
-//
-// The bottom of the phone is the app: a scrolling feed, and notification
-// banners that drop in faster and faster. The top is the water, where a fry
-// grows into a full betta over the 45 seconds. Everything the visitor does
-// (or doesn't) is logged as a FeedEvent, and each event lets a bubble go from
-// where it happened: the touch point, the banner that timed out, the post that
-// scrolled away. When the bubble reaches the fish, that event is added to the
-// betta's genome on the phone, so the visitor watches their habits shape it.
-//
-// An event goes to the server only once its bubble has landed, and the feed
-// finishes only after the last bubble lands (or is dropped from both sides).
-// The server computes the genome from exactly the events the fish took in
-// (lib/genome.ts), so the betta on the phone, the one it releases and the
-// one on the projection are the same fish.
-//
-// News about you (likes, views, followers) is done with one tap. Only a
-// notice that asks for something opens a card: Reply to a message, Accept or
-// Decline a request, ♡ a friend's new post. The feed scrolls without end.
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BANNER_MS, NOTICES, POSTS, noticeSchedule, type CardAction, type Notice } from "@/lib/feed";
-import { genomeFromFeed } from "@/lib/genome";
-import { FEED_MS, type FeedEvent } from "@/lib/protocol";
-import { WaterBackdrop } from "@/app/_components/PaintedWater";
+import { FEED_MS, type ClientToServer, type FeedEvent } from "@/lib/protocol";
 import { loadSound, playSound } from "@/app/_components/sound";
-import { BettaPreview } from "../BettaPreview";
 import styles from "./FakeFeed.module.css";
 
-type Send = (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => void;
-type Banner = { notice: Notice; key: string };
-type Point = { x: number; y: number };
-type Log = (event: Omit<FeedEvent, "t">, from?: Point | null) => void;
+type Banner = { notice: Notice; key: string; at: number };
+type FeedPost = (typeof POSTS)[number] & { key: string };
+type Send = ClientToServer["feed"];
+type Log = (event: Omit<FeedEvent, "t" | "id">, id?: string, at?: number) => boolean;
 
 const MIN_DWELL_MS = 300;
-/** A post on screen sends its dwell this often. */
 const DWELL_SLICE_MS = 1500;
-/** After the 45s, wait this long at most for bubbles still rising (the slowest take ~4s). */
-const SETTLE_MS = 5500;
-/** Banners over the 45s. The 24 notices come round again near the end, in the flood. */
-const NOTICE_COUNT = 30;
-type FeedPost = (typeof POSTS)[number] & { key: string };
-/** The posts again and again: the feed never runs out. */
-const feedPage = (page: number): FeedPost[] => POSTS.map((post, i) => ({ ...post, key: `${post.id}-${page}-${i}` }));
-/** Load another round of posts this close to the bottom. */
 const MORE_PX = 1200;
-
-/** Every button press in the app pops bubbles (octave-up render for phone speakers). */
 const TAP_SOUND = "/audio/bubbles/bubble-cluster-phone.mp3";
 
+const BANNERS: Banner[] = noticeSchedule(FEED_MS, 30).map((at, i) => ({
+  notice: NOTICES[i % NOTICES.length],
+  key: `notice-${i}`,
+  at,
+}));
 const ACTION_LABEL: Record<CardAction, string> = { like: "♡ Like", accept: "Accept", decline: "Decline", reply: "Reply" };
 
-const center = (rect: DOMRect): Point => ({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+function readEvents(storageKey: string, roundId: string): FeedEvent[] {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "null");
+    if (saved?.roundId === roundId && Array.isArray(saved.events)) return saved.events;
+  } catch {
+    // The session still works if storage is disabled.
+  }
+  return [];
+}
 
-export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
-  const startRef = useRef(0);
-  const bufferRef = useRef<FeedEvent[]>([]);
+export function FakeFeed({ send, roundId, storageKey, startedAt, clockOffset, done, connected }: {
+  send: Send;
+  roundId: string;
+  storageKey: string;
+  startedAt: number | null;
+  clockOffset: number;
+  done: boolean;
+  connected: boolean;
+}) {
+  const [savedEvents] = useState(() => readEvents(storageKey, roundId));
+  const events = useRef(new Map(savedEvents.map((event) => [event.id, event])));
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [card, setCard] = useState<Notice | null>(null);
-  const [liked, setLiked] = useState<Set<string>>(new Set());
-  const [posted, setPosted] = useState(false);
-  const [left, setLeft] = useState(FEED_MS);
+  const [card, setCard] = useState<Banner | null>(null);
+  const cardRef = useRef<Banner | null>(null);
+  const [liked, setLiked] = useState(() => new Set(savedEvents.filter((event) => event.kind === "like").map((event) => event.id)));
+  const [posted, setPosted] = useState(() => savedEvents.some((event) => event.kind === "post"));
   const [over, setOver] = useState(false);
-  const cardRef = useRef<Notice | null>(null);
-  /** Banners still on screen, so a timeout knows whether it was already tapped or swiped. */
-  const activeRef = useRef<Set<string>>(new Set());
-  const bannerEls = useRef(new Map<string, HTMLElement>());
-  useEffect(() => {
-    cardRef.current = card;
-  }, [card]);
+  const [startRequested, setStartRequested] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const scrollRef = useRef<HTMLElement>(null);
+  const activeBanners = useRef(new Map<string, Banner>());
+  const [feedEnd] = useState(() => new EventTarget());
+  const tapX = useRef<number | null>(null);
+  const deadline = startedAt === null ? null : startedAt + FEED_MS;
+  const active = deadline !== null && !done && !over;
+  const serverTime = useCallback(() => Date.now() + clockOffset, [clockOffset]);
 
-  // ------------------------------------------------------------ bubbles → betta
-  const fishRef = useRef<HTMLDivElement>(null);
-  const layerRef = useRef<HTMLDivElement>(null);
-  const touchRef = useRef<Point | null>(null);
-  /** Events whose bubble reached the fish: the betta is made of these. */
-  const landed = useRef<FeedEvent[]>([]);
-  const flying = useRef(0);
-  /** Set when the finished betta goes to the server; nothing lands after that. */
-  const sealed = useRef(false);
-  const [genome, setGenome] = useState(() => genomeFromFeed([]));
-  const [ripple, setRipple] = useState(0);
-
-  const land = useCallback((event: FeedEvent) => {
-    if (sealed.current) return;
-    landed.current.push(event);
-    bufferRef.current.push(event);
-    setGenome(genomeFromFeed(landed.current));
-    setRipple((n) => n + 1);
+  const changeCard = useCallback((banner: Banner | null) => {
+    cardRef.current = banner;
+    setCard(banner);
   }, []);
 
-  const bubble = useCallback((event: FeedEvent, from: Point, faint: boolean) => {
-    const layer = layerRef.current;
-    const fish = fishRef.current?.getBoundingClientRect();
-    if (!layer || !fish) {
-      land(event);
+  const log: Log = useCallback((partial, id, at = serverTime()) => {
+    if (startedAt === null || deadline === null || done || at > deadline) return false;
+    // Multiple visits to a post may create distinct dwell slices. Each user
+    // action keeps its id when the journal is replayed after a reconnect.
+    const eventId = id ?? Array.from(crypto.getRandomValues(new Uint32Array(2)), (value) => value.toString(36)).join("-");
+    if (events.current.has(eventId)) return false;
+    const event: FeedEvent = { ...partial, t: Math.max(0, at - startedAt), id: eventId };
+    events.current.set(eventId, event);
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify({ roundId, events: [...events.current.values()] }));
+    } catch {
+      // Stay in memory for this visit.
+    }
+    send({ roundId, events: [event] });
+    return true;
+  }, [startedAt, deadline, done, roundId, storageKey, send, serverTime]);
+
+  useEffect(() => {
+    if (!connected || done) return;
+    if (startedAt === null) {
+      if (startRequested) send({ roundId, events: [], start: true });
       return;
     }
-    const el = document.createElement("span");
-    el.className = `${styles.bubble} ${faint ? styles.faint : ""}`;
-    const size = faint ? 7 + Math.random() * 4 : 10 + Math.random() * 9;
-    el.style.width = el.style.height = `${size}px`;
-    layer.appendChild(el);
+    // The server deduplicates ids. Replay after hello so a packet lost on a
+    // socket handoff or page reload still belongs to the same visit.
+    const saved = [...events.current.values()];
+    for (let i = 0; i < saved.length; i += 500) {
+      send({ roundId, events: saved.slice(i, i + 500) });
+    }
+    if (over) send({ roundId, events: [], done: true });
+  }, [connected, done, over, roundId, send, startedAt, startRequested]);
 
-    const to = { x: fish.left + fish.width * (0.38 + Math.random() * 0.24), y: fish.top + fish.height * (0.42 + Math.random() * 0.16) };
-    const sway = (Math.random() < 0.5 ? -1 : 1) * (14 + Math.random() * 22);
-    const at = (t: number, wobble: number, scale: number) => {
-      const x = from.x + (to.x - from.x) * t + wobble - size / 2;
-      const y = from.y + (to.y - from.y) * t - size / 2;
-      return `translate(${x}px, ${y}px) scale(${scale})`;
-    };
-    const rise = from.y - to.y;
-    const duration = (faint ? 2200 : 1300) + Math.max(0, rise) * (faint ? 2.2 : 1.4);
-    flying.current++;
-    const animation = el.animate([
-      { transform: at(0, 0, 0.3), opacity: 0 },
-      { transform: at(0.08, sway * 0.2, 1), opacity: faint ? 0.45 : 1, offset: 0.1 },
-      { transform: at(0.4, sway, 1), offset: 0.42 },
-      { transform: at(0.75, -sway * 0.6, 0.95), offset: 0.76 },
-      { transform: at(1, 0, 0.5), opacity: faint ? 0.25 : 0.8 },
-    ], { duration, easing: "cubic-bezier(.45,.05,.55,.95)" });
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      el.remove();
-      flying.current--;
-      land(event);
-    };
-    animation.onfinish = finish;
-    animation.oncancel = finish;
-    // Paused animations (background tab) still land, a little late.
-    setTimeout(finish, duration + 1500);
-  }, [land]);
-
-  const log: Log = useCallback((partial, from) => {
-    const event: FeedEvent = { ...partial, t: Math.round(performance.now() - startRef.current) };
-    const origin = from ?? touchRef.current ?? { x: window.innerWidth / 2, y: window.innerHeight * 0.8 };
-    bubble(event, origin, partial.kind === "ignore");
-  }, [bubble]);
-
-  const dismiss = useCallback((key: string) => {
-    activeRef.current.delete(key);
-    bannerEls.current.delete(key);
-    setBanners((list) => list.filter((b) => b.key !== key));
-  }, []);
-
-  // Clock, notice schedule, batching, and the end of the 45 seconds.
   useEffect(() => {
-    startRef.current = performance.now();
-    send({ events: [], start: true });
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    let settle: ReturnType<typeof setInterval> | undefined;
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    if (startedAt !== null && startRequested && !done) scrollRef.current?.focus();
+  }, [startedAt, done, startRequested]);
 
-    noticeSchedule(FEED_MS, NOTICE_COUNT).forEach((at, i) => {
-      const notice = NOTICES[i % NOTICES.length];
-      const key = `${notice.id}-${at}`;
-      timers.push(
-        setTimeout(() => {
-          activeRef.current.add(key);
-          setBanners((list) => [{ notice, key }, ...list]);
-          timers.push(
-            setTimeout(() => {
-              if (!activeRef.current.has(key)) return; // tapped or swiped already
-              const el = bannerEls.current.get(key);
-              log({ kind: "ignore", tag: notice.tag }, el ? center(el.getBoundingClientRect()) : null);
-              dismiss(key);
-            }, BANNER_MS),
-          );
-        }, at),
-      );
-    });
-
-    const flush = setInterval(() => {
-      if (bufferRef.current.length) send({ events: bufferRef.current.splice(0) });
-    }, 1000);
-    const clock = setInterval(() => setLeft(Math.max(0, FEED_MS - (performance.now() - startRef.current))), 250);
-
-    timers.push(
-      setTimeout(() => {
-        window.dispatchEvent(new Event("betta-feed-end")); // posts flush their dwell
-        if (cardRef.current) log({ kind: "close", tag: cardRef.current.tag });
-        setOver(true);
-        setCard(null);
+  useEffect(() => {
+    if (deadline === null || startedAt === null || done) return;
+    const boundaries = BANNERS.flatMap(({ at }) => [startedAt + at, startedAt + at + BANNER_MS])
+      .filter((at) => at < deadline)
+      .sort((a, b) => a - b);
+    let timer: ReturnType<typeof setTimeout>;
+    const sync = () => {
+      clearTimeout(timer);
+      const now = serverTime();
+      const visible = document.visibilityState === "visible";
+      for (const [key, banner] of activeBanners.current) {
+        const expires = startedAt + banner.at + BANNER_MS;
+        if (!visible || now >= expires || now >= deadline || events.current.has(key)) {
+          if (visible && expires <= now && expires <= deadline) log({ kind: "ignore", tag: banner.notice.tag }, key, expires);
+          activeBanners.current.delete(key);
+        }
+      }
+      if (now >= deadline) {
+        feedEnd.dispatchEvent(new Event("end"));
+        const openCard = cardRef.current;
+        if (openCard) log({ kind: "close", tag: openCard.notice.tag }, `card-${openCard.key}`, deadline);
+        changeCard(null);
         setBanners([]);
-        activeRef.current.clear();
-        // Let the last bubbles reach the fish, then seal: the server gets
-        // exactly the events that landed, nothing that was still rising.
-        const until = performance.now() + SETTLE_MS;
-        settle = setInterval(() => {
-          if (flying.current > 0 && performance.now() < until) return;
-          clearInterval(settle);
-          sealed.current = true;
-          send({ events: bufferRef.current.splice(0), done: true });
-        }, 100);
-      }, FEED_MS),
-    );
-
-    return () => {
-      timers.forEach(clearTimeout);
-      clearInterval(settle);
-      clearInterval(flush);
-      clearInterval(clock);
+        setOver(true);
+        return;
+      }
+      if (visible) {
+        for (const banner of BANNERS) {
+          const appears = startedAt + banner.at;
+          if (now >= appears && now < appears + BANNER_MS && !events.current.has(banner.key)) {
+            activeBanners.current.set(banner.key, banner);
+          }
+        }
+      }
+      setBanners([...activeBanners.current.values()].reverse());
+      const next = (visible ? boundaries.find((at) => at > now) : undefined) ?? deadline;
+      timer = setTimeout(sync, next - now);
     };
-  }, [send, log, dismiss]);
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [changeCard, deadline, done, feedEnd, log, serverTime, startedAt]);
 
   const tapSound = useRef<AudioBuffer | null>(null);
   useEffect(() => {
@@ -212,73 +155,69 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
       .then((buffer) => { tapSound.current = buffer; })
       .catch((error) => console.warn("[betta] tap sound failed to load", error));
   }, []);
-  /** Bubbles from where the finger is, a little different each time. */
   const pop = () => {
     if (!tapSound.current) return;
-    const x = touchRef.current?.x ?? window.innerWidth / 2;
+    const x = tapX.current ?? window.innerWidth / 2;
     playSound(tapSound.current, { rate: 1 + Math.random() * 0.2, gain: 0.8, pan: (x / window.innerWidth - 0.5) });
   };
 
-  // News about you ends with the tap; a notice that asks something opens its card.
-  const openBanner = (banner: Banner) => {
+  const selectBanner = (banner: Banner, kind: "tap" | "ignore") => {
+    const now = serverTime();
+    if (startedAt === null || now >= startedAt + banner.at + BANNER_MS) return;
+    if (!log({ kind, tag: banner.notice.tag, intent: true }, banner.key, now)) return;
     pop();
-    if (card) log({ kind: "close", tag: card.tag });
-    log({ kind: "tap", tag: banner.notice.tag });
-    dismiss(banner.key);
-    setCard(banner.notice.card ? banner.notice : null);
-  };
-
-  const swipeBanner = (banner: Banner) => {
-    pop();
-    log({ kind: "ignore", tag: banner.notice.tag });
-    dismiss(banner.key);
+    activeBanners.current.delete(banner.key);
+    setBanners((list) => list.filter((item) => item.key !== banner.key));
+    if (kind === "ignore") return;
+    if (card) log({ kind: "close", tag: card.notice.tag }, `card-${card.key}`, now);
+    changeCard(banner.notice.card ? banner : null);
   };
 
   const react = (action: CardAction | "close") => {
-    if (!card) return;
+    if (!card || !log({ kind: action, tag: card.notice.tag, intent: true }, `card-${card.key}`)) return;
     pop();
-    log({ kind: action, tag: card.tag });
-    setCard(null);
+    changeCard(null);
   };
 
   const [pages, setPages] = useState(3);
-  const feed = useMemo(() => Array.from({ length: pages }, (_, page) => feedPage(page)).flat(), [pages]);
+  const feed = useMemo(() => Array.from({ length: pages }, (_, page) =>
+    POSTS.map((post) => ({ ...post, key: `${post.id}-${page}` })),
+  ).flat(), [pages]);
 
   const like = (post: FeedPost) => {
-    if (liked.has(post.key)) return;
+    if (!log({ kind: "like", tag: post.tag, intent: true }, post.key)) return;
     pop();
-    log({ kind: "like", tag: post.tag });
     setLiked((set) => new Set(set).add(post.key));
   };
-
-  const growth = 1 - left / FEED_MS;
+  const cardContent = active ? card?.notice.card : undefined;
 
   return (
     <div className={styles.root}>
-      <section className={styles.tank}>
-        <WaterBackdrop />
-        <div ref={fishRef} className={styles.fish}>
-          <BettaPreview genome={genome} playerId={playerId} width={200} growth={growth} />
-          {ripple > 0 && <span key={ripple} className={styles.ripple} aria-hidden />}
-        </div>
-        <div className={styles.progress} style={{ transform: `scaleX(${left / FEED_MS})` }} />
-      </section>
-
       <section
-        className={`${styles.app} ${over ? styles.closed : ""}`}
-        onPointerDownCapture={(e) => {
-          touchRef.current = { x: e.clientX, y: e.clientY };
-        }}
+        className={styles.app}
+        inert={!active}
+        onPointerDownCapture={(event) => { tapX.current = event.clientX; }}
       >
         <main
+          ref={scrollRef}
           className={styles.feed}
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            if (el.scrollTop + el.clientHeight > el.scrollHeight - MORE_PX) setPages((n) => n + 1);
+          tabIndex={active ? 0 : undefined}
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            if (active && el.scrollTop + el.clientHeight > el.scrollHeight - MORE_PX) setPages((n) => n + 1);
           }}
         >
           {feed.map((post) => (
-            <PostView key={post.key} post={post} liked={liked.has(post.key)} onLike={() => like(post)} log={log} />
+            <PostView
+              key={post.key}
+              post={post}
+              liked={liked.has(post.key)}
+              onLike={() => like(post)}
+              deadline={active ? deadline : null}
+              feedEnd={feedEnd}
+              serverTime={serverTime}
+              log={log}
+            />
           ))}
         </main>
 
@@ -286,8 +225,8 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
           <button
             className={styles.postButton}
             onClick={() => {
+              if (!log({ kind: "post", tag: "self", intent: true })) return;
               pop();
-              log({ kind: "post", tag: "self" });
               setPosted(true);
             }}
           >
@@ -295,36 +234,32 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
           </button>
         </footer>
 
-        <div className={styles.banners}>
-          {banners.slice(0, 3).map((banner) => (
-            <div
-              key={banner.key}
-              className={styles.banner}
-              ref={(el) => {
-                if (el) bannerEls.current.set(banner.key, el);
-              }}
-            >
-              <button className={styles.bannerBody} onClick={() => openBanner(banner)}>
-                <span>{banner.notice.text}</span>
-              </button>
-              <button className={styles.bannerClose} aria-label="Dismiss" onClick={() => swipeBanner(banner)}>
-                ×
-              </button>
-            </div>
-          ))}
-          {banners.length > 3 && <div className={styles.more}>+{banners.length - 3} more</div>}
-        </div>
+        {active && (
+          <div className={styles.banners}>
+            {banners.slice(0, 3).map((banner) => (
+              <div key={banner.key} className={styles.banner}>
+                <button className={styles.bannerBody} onClick={() => selectBanner(banner, "tap")}>
+                  <span>{banner.notice.text}</span>
+                </button>
+                <button className={styles.bannerClose} aria-label="Dismiss" onClick={() => selectBanner(banner, "ignore")}>
+                  ×
+                </button>
+              </div>
+            ))}
+            {banners.length > 3 && <div className={styles.more}>+{banners.length - 3} more</div>}
+          </div>
+        )}
 
-        {card?.card && (
+        {cardContent && (
           <div className={styles.scrim} onClick={() => react("close")}>
             <div className={styles.card} onClick={(e) => e.stopPropagation()}>
-              <p className={styles.cardTitle}>{card.card.title}</p>
-              {card.card.photo && <div className={styles.cardImage} />}
-              {card.card.body && <p className={styles.cardBody}>{card.card.body}</p>}
+              <p className={styles.cardTitle}>{cardContent.title}</p>
+              {cardContent.photo && <div className={styles.cardImage} />}
+              {cardContent.body && <p className={styles.cardBody}>{cardContent.body}</p>}
               <div className={styles.cardActions}>
-                {card.card.actions.map((action) => (
+                {cardContent.actions.map((action) => (
                   <button key={action} className={styles.action} onClick={() => react(action)}>
-                    {card.card?.labels?.[action] ?? ACTION_LABEL[action]}
+                    {cardContent.labels?.[action] ?? ACTION_LABEL[action]}
                   </button>
                 ))}
                 <button className={styles.actionGhost} onClick={() => react("close")}>
@@ -336,71 +271,82 @@ export function FakeFeed({ send, playerId }: { send: Send; playerId: string }) {
         )}
       </section>
 
-      <div ref={layerRef} className={styles.bubbles} aria-hidden />
+      {startedAt === null && !done && (
+        <dialog
+          ref={dialogRef}
+          className={styles.intro}
+          aria-labelledby="feed-intro-title"
+          onCancel={(event) => event.preventDefault()}
+        >
+          <h1 id="feed-intro-title">Do whatever you want!</h1>
+          <button autoFocus disabled={!connected || startRequested} onClick={() => setStartRequested(true)}>
+            OK
+          </button>
+        </dialog>
+      )}
     </div>
   );
 }
 
-/** One post. Logs how long it was at least 60% on screen; the bubble leaves from the post. */
-function PostView({
-  post,
-  liked,
-  onLike,
-  log,
-}: {
+function PostView({ post, liked, onLike, deadline, feedEnd, serverTime, log }: {
   post: FeedPost;
   liked: boolean;
   onLike: () => void;
+  deadline: number | null;
+  feedEnd: EventTarget;
+  serverTime: () => number;
   log: Log;
 }) {
   const ref = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || deadline === null) return;
     let since: number | null = null;
     let tick: ReturnType<typeof setInterval> | undefined;
-    // Dwell goes out in slices while the post is on screen, so the betta
-    // changes as the visitor lingers, not all at once when they scroll away
-    // or the 45 seconds end.
+    let inView = false;
     const slice = (min: number) => {
       if (since === null) return;
-      const now = performance.now();
-      const ms = Math.round(now - since);
+      const now = Math.min(serverTime(), deadline);
+      const ms = now - since;
       if (ms < min) return;
       since = now;
-      log({ kind: "dwell", tag: post.tag, ms, hue: post.hue }, center(el.getBoundingClientRect()));
+      log({ kind: "dwell", tag: post.tag, ms, hue: post.hue }, undefined, now);
     };
     const end = () => {
       slice(MIN_DWELL_MS);
       since = null;
       clearInterval(tick);
     };
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          if (since !== null) return;
-          since = performance.now();
-          tick = setInterval(() => slice(DWELL_SLICE_MS), DWELL_SLICE_MS);
-        } else end();
-      },
-      { threshold: 0.6 },
-    );
+    const sync = () => {
+      if (!inView || document.visibilityState !== "visible" || serverTime() >= deadline) {
+        end();
+      } else if (since === null) {
+        since = serverTime();
+        tick = setInterval(() => slice(DWELL_SLICE_MS), DWELL_SLICE_MS);
+      }
+    };
+    const observer = new IntersectionObserver(([entry]) => {
+      inView = entry.intersectionRatio >= 0.6;
+      sync();
+    }, { threshold: 0.6 });
     observer.observe(el);
-    window.addEventListener("betta-feed-end", end);
+    feedEnd.addEventListener("end", end);
+    document.addEventListener("visibilitychange", sync);
     return () => {
       observer.disconnect();
-      clearInterval(tick);
-      window.removeEventListener("betta-feed-end", end);
+      end();
+      feedEnd.removeEventListener("end", end);
+      document.removeEventListener("visibilitychange", sync);
     };
-  }, [post, log]);
+  }, [deadline, feedEnd, log, post, serverTime]);
 
   return (
     <article ref={ref} className={styles.post}>
       <p className={styles.author}>{post.author}</p>
       <div className={styles.image} />
       <div className={styles.postFoot}>
-        <button className={styles.like} onClick={onLike}>
+        <button className={styles.like} aria-label="Like" aria-pressed={liked} onClick={onLike}>
           {liked ? "♥" : "♡"}
         </button>
         <span>{post.text}</span>

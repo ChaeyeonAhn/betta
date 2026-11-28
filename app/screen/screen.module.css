@@ -43,10 +43,28 @@
   z-index: 1;
 }
 
+.entry[data-entry="diving"] .ocean {
+  animation: revealLattice var(--dive-time) linear both;
+}
+
+@keyframes revealLattice {
+  0%, 76% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .entry {
     --dive-time: var(--entry-reduced-duration);
   }
+
+  .entry[data-entry="diving"] .ocean {
+    animation-name: revealLatticeReduced;
+  }
+}
+
+@keyframes revealLatticeReduced {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /* Under the display's bottom edge, outside it. Kept on screen when the display fills the window. */

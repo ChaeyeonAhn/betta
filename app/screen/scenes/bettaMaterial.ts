@@ -31,6 +31,7 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
     bettaFin: { value: Number(fin) },
     bettaPattern: { value: style.pattern },
     bettaSeed: { value: style.seed },
+    bettaGray: { value: 0 },
     bettaFiller: { value: Number(style.filler) },
     /** Placeholders: seconds since the grid started filling; each instance fades in after its `fillerDelay`. */
     bettaElapsed: { value: 1e6 },
@@ -81,6 +82,7 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         uniform float bettaPattern;
         uniform float bettaSeed;
         uniform float bettaFiller;
+        uniform float bettaGray;
         uniform vec4 bettaMarks[${MAX_MARKS}];
         uniform vec3 bettaMarkColors[${MAX_MARKS}];
         varying float bettaFade;
@@ -170,6 +172,8 @@ export function createBettaMaterial(atlas: Texture, style: MaterialStyle, fin: b
         vec3 printed = diffuseColor.rgb * mix(.36, 1.04, contour);
         outgoingLight = mix(printed, outgoingLight, .16);
         outgoingLight = mix(outgoingLight, vec3(dot(outgoingLight, vec3(.2126,.7152,.0722))*.65), bettaFiller);
+        float gray = dot(outgoingLight, vec3(.2126,.7152,.0722));
+        outgoingLight = mix(outgoingLight, vec3(gray), bettaGray);
         #include <opaque_fragment>
       `);
   };

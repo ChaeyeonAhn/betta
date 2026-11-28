@@ -2,18 +2,20 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useBetta } from "@/hooks/useBetta";
-import type { AdminCommand, Hello, SessionState } from "@/lib/protocol";
+import type { AdminCommand, Hello, Reaction, SessionState } from "@/lib/protocol";
 import { ProjectionControls, useProjectionScale } from "./ProjectionControls";
 import { Landing } from "./Landing";
 import { WaterBackdrop } from "@/app/_components/PaintedWater";
 import { WATER_ENTRY_MS, WATER_ENTRY_REDUCED_MS, type WaterEntry } from "@/app/_components/waterEntry";
 import { Grid } from "./scenes/Grid";
+import { preloadGridReactions, REACTION_MS, type GridReactionEvent } from "./scenes/GridReaction";
 import { Open } from "./scenes/Open";
 import { STAGE_H, STAGE_W } from "./scenes/gridLayout";
 import { useAmbience } from "./useAmbience";
 import styles from "./screen.module.css";
 
 const GRID_FADE_MS = 2200;
+const MAX_REACTIONS = 64;
 
 type Props = {
   room: string;
@@ -30,6 +32,38 @@ export function Screen({ room, adminKey, socketUrl }: Props) {
   const [diveArmed, setDiveArmed] = useState(false);
   const onDiveEnd = useCallback(() => setDiveArmed(false), []);
   const projection = useProjectionScale();
+  const [reactions, setReactions] = useState<GridReactionEvent[]>([]);
+  const nextReactionId = useRef(0);
+  useEffect(preloadGridReactions, []);
+
+  useEffect(() => {
+    const connection = socket.current;
+    if (!connection) return;
+    const receive = (event: Reaction) => {
+      const reaction = { ...event, id: nextReactionId.current++, at: performance.now() };
+      setReactions((recent) => [
+        ...recent.filter(({ at }) => reaction.at - at < REACTION_MS).slice(1 - MAX_REACTIONS),
+        reaction,
+      ]);
+    };
+    const clear = () => setReactions([]);
+    connection.on("reaction", receive);
+    connection.on("disconnect", clear);
+    return () => {
+      connection.off("reaction", receive);
+      connection.off("disconnect", clear);
+    };
+  }, [hello, socket, socketUrl]);
+
+  const oldestReaction = reactions[0];
+  useEffect(() => {
+    if (!oldestReaction) return;
+    const timer = setTimeout(() => {
+      const now = performance.now();
+      setReactions((recent) => recent.filter(({ at }) => now - at < REACTION_MS));
+    }, Math.ceil(oldestReaction.at + REACTION_MS - performance.now()));
+    return () => clearTimeout(timer);
+  }, [oldestReaction]);
   // The tank hum runs under every stage, from the lobby on.
   useAmbience(true);
 
@@ -73,24 +107,22 @@ export function Screen({ room, adminKey, socketUrl }: Props) {
     [state],
   );
   const stage = state?.stage;
-  // Bettas grow on the phones and go straight into the grid as each one is done.
-  const emptyInput = stage === "input" && !players.some((player) => player.genome && player.slot !== null);
   const diving = stage === "input" && connected && diveArmed;
   // Until the first snapshot arrives the screen shows the lobby, not a black frame.
   const lobby = !state || stage === "lobby";
-  const entry: WaterEntry = lobby ? "lobby" : diving ? "diving" : "underwater";
-  const caged = stage === "born" || stage === "grid" || (stage === "input" && !emptyInput);
+  const entry: WaterEntry = lobby ? "lobby" : "diving";
+  const caged = stage === "input" || stage === "born" || stage === "grid";
   // When the walls come down, the empty grid stays a moment over the open tank and fades away.
   const lastGrid = useRef<SessionState | null>(null);
   if (stage === "grid" && state) lastGrid.current = state;
   const [leaving, setLeaving] = useState<SessionState | null>(null);
   useEffect(() => {
-    if (stage !== "open" || !lastGrid.current) return;
+    if (stage !== "open" || !lastGrid.current || state?.roundId !== lastGrid.current.roundId) return;
     setLeaving(lastGrid.current);
     lastGrid.current = null;
     const timer = setTimeout(() => setLeaving(null), GRID_FADE_MS);
     return () => clearTimeout(timer);
-  }, [stage]);
+  }, [stage, state?.roundId]);
 
   return (
     <main className={styles.root} data-stage={stage} data-connected={connected}>
@@ -99,19 +131,21 @@ export function Screen({ room, adminKey, socketUrl }: Props) {
         height: STAGE_H,
         transform: `translate(calc(-50% + ${projection.offset.x}px), calc(-50% + ${projection.offset.y}px)) scale(${projection.scale.x / 100}, ${projection.scale.y / 100})`,
       }}>
-        {caged && state && <Grid state={state} />}
+        {caged && state && (
+          <Grid key={state.roundId} state={state} reactions={reactions.filter(({ roundId }) => roundId === state.roundId)} />
+        )}
         {stage === "open" && state && <Open players={players} gridSize={state.gridSize} socket={socket} />}
-        {stage === "open" && leaving && (
+        {stage === "open" && leaving && leaving.roundId === state?.roundId && (
           <div className={styles.gridLeaving} style={{ animationDuration: `${GRID_FADE_MS}ms` }}>
             <Grid state={leaving} leaving />
           </div>
         )}
-        {(lobby || diving || emptyInput) && (
+        {(lobby || diving) && (
           <div className={styles.entry} data-entry={entry} style={{
             "--entry-duration": `${WATER_ENTRY_MS}ms`,
             "--entry-reduced-duration": `${WATER_ENTRY_REDUCED_MS}ms`,
           } as React.CSSProperties}>
-            {entry !== "underwater" && <Landing diving={diving} onDiveEnd={onDiveEnd} joined={players.length} />}
+            <Landing diving={diving} onDiveEnd={onDiveEnd} joined={players.length} />
             <div className={styles.ocean}>
               <WaterBackdrop entry={entry} floaters={floaters} />
             </div>

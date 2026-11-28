@@ -5,6 +5,7 @@
 // Run with Node 24 type stripping: `node server/index.ts` (`--https` reuses
 // the certificates `next dev --experimental-https` generates).
 
+import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer as createHttpServer, type RequestListener } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
@@ -14,10 +15,9 @@ import {
   DECAY_PER_PLAYER,
   DEFAULT_ROOM,
   FILL_HOLD_MS,
-  FILL_MS,
+  FEED_MS,
   GRID_MS,
   OPEN_MS,
-  RELEASE_TIMEOUT_MS,
   TAPS_PER_PLAYER,
   STAGES,
   type AdminCommand,
@@ -25,6 +25,7 @@ import {
   type FeedEvent,
   type Genome,
   type Phase,
+  type ReactionKind,
   type ServerToClient,
   type SessionState,
   type Stage,
@@ -39,6 +40,11 @@ const ADMIN_KEY = process.env.ADMIN_KEY || "";
 /** A disconnected player's betta fades and is removed after this long. */
 const FADE_MS = 3 * 60_000;
 const BROADCAST_MS = 100;
+/** Let the final in-flight batch land without extending the creation clock. */
+const FEED_GRACE_MS = 750;
+const MAX_FEED_EVENTS = 10_000;
+/** Reconnect backlog still scores, but only current gestures animate. */
+const REACTION_FRESH_MS = 1500;
 /** Grid stage auto-break; env override is for tests. */
 const GRID_TIMEOUT_MS = Number(process.env.GRID_MS) || GRID_MS;
 /** Comma-separated page origins allowed to connect, e.g. the Vercel URL. Unset = any. */
@@ -53,9 +59,9 @@ type Player = {
   phase: Phase;
   feed: FeedEvent[];
   feedDone: boolean;
+  feedStartedAt: number | null;
+  feedIds: Set<string>;
   genome: Genome | null;
-  /** Epoch ms the genome was made, for the release timeout. */
-  genomeAt: number | null;
   released: boolean;
   slot: number | null;
   openUntil: number | null;
@@ -63,6 +69,7 @@ type Player = {
 };
 
 const session = {
+  roundId: randomUUID(),
   stage: "lobby" as Stage,
   players: new Map<string, Player>(),
   effortTotal: 0,
@@ -84,8 +91,9 @@ function newPlayer(id: string): Player {
     phase: "waiting",
     feed: [],
     feedDone: false,
+    feedStartedAt: null,
+    feedIds: new Set(),
     genome: null,
-    genomeAt: null,
     released: false,
     slot: null,
     openUntil: null,
@@ -95,44 +103,40 @@ function newPlayer(id: string): Player {
 
 function setGenome(player: Player, genome: Genome) {
   player.genome = genome;
-  player.genomeAt = Date.now();
   // A late visitor who finishes while the tank is open swims in right away.
   if (session.stage === "open") player.openUntil = Date.now() + OPEN_MS;
 }
 
-/** Whether a released betta still gets a cell: before the placeholders start filling the grid. */
-function seating() {
-  return session.fillAt === null && (session.stage === "born" || session.stage === "input");
-}
-
-/** Players in the current round: the ones the grid waits for. */
-function inRound(player: Player) {
-  return session.stage === "input" ? player.phase === "input" : player.phase === "caged";
-}
-
-function gridCells() {
-  return createGridLayout(Math.max(1, session.gridSize)).slots.length;
+/** Reserve once, before the visitor presses OK; slots survive reconnects. */
+function reserveSeat(player: Player) {
+  if (player.slot !== null || (session.stage !== "input" && session.stage !== "born")) return;
+  const seated = [...session.players.values()].filter((p) => p.slot !== null).length;
+  session.gridSize = Math.max(session.gridSize, seated + 1);
+  const taken = new Set([...session.players.values()].map((p) => p.slot));
+  const free = createGridLayout(Math.max(1, session.gridSize)).slots
+    .map((_, index) => index).filter((index) => !taken.has(index));
+  player.slot = free.length ? free[Math.floor(Math.random() * free.length)] : null;
 }
 
 function release(player: Player) {
   if (!player.genome || player.released) return;
   player.released = true;
-  if (!seating()) return;
-  const round = [...session.players.values()].filter((p) => p.slot !== null || inRound(p)).length;
-  session.gridSize = Math.max(session.gridSize, round);
-  const taken = new Set([...session.players.values()].map((p) => p.slot));
-  const free = Array.from({ length: gridCells() }, (_, i) => i).filter((i) => !taken.has(i));
-  player.slot = free.length ? free[Math.floor(Math.random() * free.length)] : null;
+  reserveSeat(player);
 }
 
-/** Everyone in the round has a seat: placeholders fill the rest, the full grid holds, then the walls go up. */
-function startFill() {
-  if (session.stage !== "born") setStage("born");
-  session.fillAt = Date.now();
-  session.deadline = session.fillAt + FILL_MS + FILL_HOLD_MS;
-  console.log("grid filling");
+function finishFeed(player: Player) {
+  if (player.feedDone) return;
+  player.feedDone = true;
+  setGenome(player, genomeFromFeed(player.feed));
+  release(player);
+  player.phase = session.stage === "open" ? "free" : "caged";
   scheduleBroadcast();
 }
+
+const reactionFor: Partial<Record<FeedEvent["kind"], ReactionKind>> = {
+  like: "heart", tap: "happy", accept: "happy", decline: "mad",
+  reply: "message", post: "share", close: "serious", ignore: "sad",
+};
 
 function isDone(player: Player) {
   return player.feedDone;
@@ -150,11 +154,13 @@ function setStage(stage: Stage) {
   session.stage = stage;
   session.deadline = null;
   session.fillAt = null;
-  if (stage === "input") session.gridSize = [...session.players.values()].filter((p) => p.socketId).length;
+  if (stage === "input") session.gridSize = Math.max(session.gridSize, session.players.size);
+  // Hold the completed adults without manufacturing filler fish or a zoom-out.
+  if (stage === "born") session.deadline = Date.now() + FILL_HOLD_MS;
 
   for (const player of session.players.values()) {
     if (stage === "input") {
-      player.slot = null;
+      reserveSeat(player);
       player.openUntil = null;
     }
     // Late arrivals keep scrolling their own feed as the room advances.
@@ -176,6 +182,7 @@ function setStage(stage: Stage) {
 }
 
 function reset() {
+  session.roundId = randomUUID();
   // Keep who is connected, clear everything they did.
   for (const [id, player] of session.players) {
     if (!player.socketId) session.players.delete(id);
@@ -189,12 +196,6 @@ function reset() {
 function runAdmin(command: AdminCommand) {
   switch (command.cmd) {
     case "next": {
-      // Born: start the placeholders now; during the fill or the hold, go straight to the walls.
-      if (session.stage === "born") {
-        if (session.fillAt === null) startFill();
-        else setStage("grid");
-        break;
-      }
       const index = STAGES.indexOf(session.stage);
       if (index < STAGES.length - 1) setStage(STAGES[index + 1]);
       break;
@@ -214,6 +215,8 @@ function runAdmin(command: AdminCommand) {
 
 function snapshot(): SessionState {
   return {
+    roundId: session.roundId,
+    serverNow: Date.now(),
     room: ROOM,
     stage: session.stage,
     players: [...session.players.values()].map((p) => ({
@@ -221,6 +224,7 @@ function snapshot(): SessionState {
       connected: p.socketId !== null,
       phase: p.phase,
       done: isDone(p),
+      feedStartedAt: p.feedStartedAt,
       genome: p.genome,
       released: p.released,
       slot: p.slot,
@@ -275,7 +279,8 @@ function scheduleBroadcast() {
 
 function playerOf(socket: Socket<ClientToServer, ServerToClient, Record<string, never>, Data>) {
   const id = socket.data.playerId;
-  return id ? session.players.get(id) : undefined;
+  const player = id ? session.players.get(id) : undefined;
+  return player?.socketId === socket.id ? player : undefined;
 }
 
 io.on("connection", (socket) => {
@@ -308,6 +313,7 @@ io.on("connection", (socket) => {
     }
     player.socketId = socket.id;
     player.lastSeen = Date.now();
+    reserveSeat(player);
     socket.emit("state", snapshot());
     scheduleBroadcast();
   });
@@ -317,16 +323,33 @@ io.on("connection", (socket) => {
     runAdmin(command);
   });
 
-  socket.on("feed", ({ events, start, done }) => {
+  socket.on("feed", ({ roundId, events, start, done }) => {
     const player = playerOf(socket);
-    if (!player || player.feedDone || player.phase !== "input") return;
-    if (start) player.feed = [];
-    player.feed.push(...events.slice(0, 500));
-    if (done) {
-      player.feedDone = true;
-      setGenome(player, genomeFromFeed(player.feed));
-      console.log(`  genome ${player.id.slice(0, 6)} ${JSON.stringify(player.genome)}`);
+    if (roundId !== session.roundId || !player || player.feedDone || player.phase !== "input") return;
+    const now = Date.now();
+    if (start && player.feedStartedAt === null) player.feedStartedAt = now;
+    if (player.feedStartedAt === null) return;
+    const elapsed = now - player.feedStartedAt;
+    if (elapsed > FEED_MS + FEED_GRACE_MS) {
+      finishFeed(player);
+      return;
     }
+    for (const event of (Array.isArray(events) ? events : []).slice(0, 500)) {
+      if (!event || !Number.isFinite(event.t) || event.t < 0 || event.t > FEED_MS
+        || event.t > elapsed + 1000 || !["dwell", "tap", "ignore", "like", "accept", "decline", "reply", "close", "post"].includes(event.kind)
+        || !["brag", "mood", "friend", "stranger", "self"].includes(event.tag)
+        || (event.ms !== undefined && (!Number.isFinite(event.ms) || event.ms < 0 || event.ms > FEED_MS))
+        || (event.hue !== undefined && (!Number.isFinite(event.hue) || event.hue < 0 || event.hue > 1))) continue;
+      const id = event.id ?? JSON.stringify([event.kind, event.tag, event.t, event.ms, event.hue]);
+      if (player.feedIds.has(id) || player.feed.length >= MAX_FEED_EVENTS) continue;
+      player.feedIds.add(id);
+      player.feed.push(event);
+      const kind = reactionFor[event.kind];
+      if (event.intent === true && kind && elapsed - event.t <= REACTION_FRESH_MS) {
+        io.to("screens").emit("reaction", { roundId: session.roundId, playerId: player.id, kind });
+      }
+    }
+    if (done && elapsed >= FEED_MS) finishFeed(player);
     scheduleBroadcast();
   });
 
@@ -352,17 +375,17 @@ io.on("connection", (socket) => {
   });
 
   socket.on("steer", (steer) => {
-    const id = socket.data.playerId;
-    if (!id) return;
-    io.to("screens").emit("steer", { ...steer, playerId: id });
+    const player = playerOf(socket);
+    if (!player || !player.genome) return;
+    io.to("screens").emit("steer", { ...steer, playerId: player.id });
   });
 
   socket.on("disconnect", () => {
     const player = playerOf(socket);
     if (!player || player.socketId !== socket.id) return;
-    if (!player.genome) {
+    if (session.stage === "lobby" && player.phase === "waiting" && player.slot === null
+      && player.feedStartedAt === null && !player.genome) {
       session.players.delete(player.id);
-      console.log(`- phone ${player.id.slice(0, 6)} (dropped)`);
       scheduleBroadcast();
       return;
     }
@@ -377,16 +400,15 @@ io.on("connection", (socket) => {
 // Grid stage: the shared push leaks away, and the walls come down on their own at the deadline.
 const TICK_MS = 250;
 setInterval(() => {
-  if (seating()) {
-    const now = Date.now();
-    for (const player of session.players.values()) {
-      if (player.genome && !player.released && player.genomeAt && now - player.genomeAt > RELEASE_TIMEOUT_MS) {
-        release(player);
-        scheduleBroadcast();
-      }
+  const now = Date.now();
+  for (const player of session.players.values()) {
+    if (!player.feedDone && player.feedStartedAt !== null && now >= player.feedStartedAt + FEED_MS + FEED_GRACE_MS) {
+      finishFeed(player);
     }
-    const round = [...session.players.values()].filter((p) => p.socketId && inRound(p));
-    if (round.length && round.every((p) => p.genome && p.released)) startFill();
+  }
+  if (session.stage === "input") {
+    const active = [...session.players.values()].filter((player) => player.socketId);
+    if (active.length && active.every((player) => player.feedDone)) setStage("born");
   }
   if (session.stage === "born" && session.deadline && Date.now() >= session.deadline) {
     console.log("grid full: walls up");

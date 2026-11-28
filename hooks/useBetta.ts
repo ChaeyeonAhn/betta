@@ -14,6 +14,7 @@ export type BettaSocket = Socket<ServerToClient, ClientToServer>;
 export function useBetta(hello: Hello | null, url: string | null = null) {
   const [state, setState] = useState<SessionState | null>(null);
   const [connected, setConnected] = useState(false);
+  const [clockOffset, setClockOffset] = useState(0);
   const [rejected, setRejected] = useState<string | null>(null);
   const socketRef = useRef<BettaSocket | null>(null);
   const helloKey = hello ? JSON.stringify(hello) : null;
@@ -28,7 +29,16 @@ export function useBetta(hello: Hello | null, url: string | null = null) {
       socket.emit("hello", JSON.parse(helloKey) as Hello);
     });
     socket.on("disconnect", () => setConnected(false));
-    socket.on("state", setState);
+    let hasClockSample = false;
+    socket.on("state", (snapshot) => {
+      if (!hasClockSample) {
+        // Anchor once per socket lifetime so incoming state and reconnects do
+        // not move an active feed's deadline when network latency varies.
+        setClockOffset(snapshot.serverNow - Date.now());
+        hasClockSample = true;
+      }
+      setState(snapshot);
+    });
     socket.on("rejected", ({ reason }) => setRejected(reason));
 
     return () => {
@@ -37,5 +47,5 @@ export function useBetta(hello: Hello | null, url: string | null = null) {
     };
   }, [helloKey, url]);
 
-  return { state, connected, rejected, socket: socketRef };
+  return { state, clockOffset, connected, rejected, socket: socketRef };
 }

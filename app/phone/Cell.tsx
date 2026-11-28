@@ -25,7 +25,7 @@ export function Cell({ state, me, slot, onPush }: {
 }) {
   const layout = useMemo(() => createGridLayout(state.gridSize), [state.gridSize]);
   const bettas = state.players.flatMap((player) =>
-    player.genome && player.slot !== null && player.slot < layout.slots.length
+    player.slot !== null && player.slot < layout.slots.length
       ? [{ id: player.id, genome: player.genome, slot: player.slot }]
       : []);
   const walls = state.stage === "grid";
@@ -44,9 +44,6 @@ export function Cell({ state, me, slot, onPush }: {
         <GridTank
           players={bettas}
           layout={layout}
-          fillStart={state.fillAt}
-          full={walls}
-          arrive
           pov={{ slot, id: me.id, effort: me.effort, look }}
         />
       </BettaVisual>

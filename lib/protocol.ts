@@ -20,7 +20,14 @@ export type Genome = {
 /** What a post or notification is about. Each tag feeds one or two genome axes (lib/genome.ts). */
 export type FeedTag = "brag" | "mood" | "friend" | "stranger" | "self";
 
+export type ReactionKind = "heart" | "happy" | "mad" | "message" | "share" | "serious" | "sad";
+export type Reaction = { roundId: string; playerId: string; kind: ReactionKind };
+
 export type FeedEvent = {
+  /** Stable across retries; newly generated for every observation or gesture. */
+  id?: string;
+  /** Only a deliberate gesture produces a projection reaction. */
+  intent?: boolean;
   /**
    * dwell   a post was on screen (ms)        tap      a banner was opened
    * ignore  a banner timed out or was swiped like     ♡ on a post or card
@@ -43,10 +50,12 @@ export type PlayerView = {
   phase: Phase;
   /** Finished the 45s feed. */
   done: boolean;
+  /** Server epoch at the first accepted OK/start; retained on reconnect. */
+  feedStartedAt: number | null;
   genome: Genome | null;
-  /** Born stage: the visitor pushed their betta from the phone into the tank. */
+  /** The server completed creation and put the adult into the shared tank. */
   released: boolean;
-  /** Grid cell this betta was given on release (index into createGridLayout().slots). Null = arrived late, enters open from an edge. */
+  /** Reserved before OK in input/born; stable through reconnect. Null = late grid/open arrival. */
   slot: number | null;
   /** Open stage: epoch ms when this visitor's time with the joystick ends and their betta card appears. */
   openUntil: number | null;
@@ -55,13 +64,16 @@ export type PlayerView = {
 };
 
 export type SessionState = {
+  roundId: string;
+  /** Snapshot epoch for phone clock-offset estimation. */
+  serverNow: number;
   room: string;
   stage: Stage;
   players: PlayerView[];
   effort: { total: number; threshold: number };
   /** Epoch ms when the current timed stage auto-advances, or null. */
   deadline: number | null;
-  /** Born stage: epoch ms when placeholder bettas started filling the empty cells, or null. */
+  /** Legacy placeholder clock. New creation rounds keep this null. */
   fillAt: number | null;
   /** Player count the grid layout is built for: createGridLayout(gridSize). */
   gridSize: number;
@@ -80,11 +92,13 @@ export type AdminCommand =
 
 export type Steer = { x: number; y: number };
 
+export type FeedBatch = { roundId: string; events: FeedEvent[]; start?: boolean; done?: boolean };
+
 export type ClientToServer = {
   hello: (hello: Hello) => void;
   admin: (command: AdminCommand) => void;
-  /** `start` clears earlier events (feed restarted after a reload); `done` = the 45s are over. */
-  feed: (batch: { events: FeedEvent[]; start?: boolean; done?: boolean }) => void;
+  /** Start is idempotent; done is accepted only once the server's 45s has elapsed. */
+  feed: (batch: FeedBatch) => void;
   effort: (effort: { amount: number }) => void;
   /** Born stage: send my betta from the phone to the screen. */
   release: () => void;
@@ -93,6 +107,7 @@ export type ClientToServer = {
 
 export type ServerToClient = {
   state: (state: SessionState) => void;
+  reaction: (reaction: Reaction) => void;
   steer: (steer: Steer & { playerId: string }) => void;
   rejected: (reason: { reason: string }) => void;
 };
@@ -107,9 +122,8 @@ export const DECAY_PER_PLAYER = 2;
 export const DEFAULT_ROOM = "betta";
 
 /**
- * Born stage: once every visitor's betta is in, placeholder bettas fade in
- * with their cubes, front row first and then the rows behind, over FILL_MS.
- * The full grid then holds for FILL_HOLD_MS before the walls go up.
+ * FILL_MS is retained for older scene consumers. New rounds hold the actual
+ * completed adults for FILL_HOLD_MS without filling empty cells.
  */
 export const FILL_MS = 14_000;
 export const FILL_HOLD_MS = 20_000;

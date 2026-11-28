@@ -1,7 +1,6 @@
-/* Mode A: the betta's water on top, a pitch-black SNS app in white lines below. */
+/* Full-screen SNS in the installation's black and white. */
 
 .root {
-  --tank-h: 28dvh;
   --line: rgb(255 255 255 / 86%);
   --faint-line: rgb(255 255 255 / 24%);
   --dim: rgb(255 255 255 / 56%);
@@ -24,86 +23,55 @@
   cursor: pointer;
 }
 
-/* The water */
-
-.tank {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--tank-h);
-  isolation: isolate;
-  display: grid;
-  place-items: center;
-  background: var(--water-paper);
-  overflow: hidden;
-}
-
-.fish {
-  position: relative;
-  display: grid;
-  place-items: center;
-  padding-top: env(safe-area-inset-top);
-}
-
-/* A ring spreads from the fish each time a bubble reaches it. */
-.ripple {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 120px;
-  height: 120px;
-  margin: -60px 0 0 -60px;
-  border: 1px solid rgb(255 255 255 / 70%);
-  border-radius: 50%;
-  pointer-events: none;
-  animation: ripple 900ms ease-out both;
-}
-
-@keyframes ripple {
-  from {
-    transform: scale(0.3);
-    opacity: 0.9;
-  }
-  to {
-    transform: scale(1.7);
-    opacity: 0;
-  }
-}
-
-/* Time left, on the line between the water and the app. */
-.progress {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: #fff;
-  transform-origin: left;
-  transition: transform 250ms linear;
-}
-
-/* The app */
-
 .app {
   position: absolute;
-  top: var(--tank-h);
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   overflow: hidden;
   background: #000;
-  transition: opacity 600ms ease;
 }
 
-.closed {
-  pointer-events: none;
-  opacity: 0.35;
+.intro {
+  width: min(320px, calc(100% - 40px));
+  padding: 24px;
+  border: 1px solid #fff;
+  border-radius: 0;
+  background: #000;
+  color: inherit;
+  text-align: center;
+}
+
+.intro::backdrop {
+  background: rgb(0 0 0 / 72%);
+}
+
+.intro h1 {
+  margin: 0 0 20px;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  font-family: var(--font-mono);
+}
+
+.root .intro button {
+  min-width: 72px;
+  min-height: 44px;
+  border: 1px solid #fff;
+  border-radius: 0;
+}
+
+.intro button:focus-visible {
+  outline: 1px solid #fff;
+  outline-offset: 3px;
+}
+
+.intro button:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .feed {
   position: absolute;
-  top: 0;
+  top: env(safe-area-inset-top);
   bottom: calc(53px + env(safe-area-inset-bottom));
   left: 0;
   right: 0;
@@ -176,7 +144,7 @@
 
 .banners {
   position: absolute;
-  top: 8px;
+  top: calc(8px + env(safe-area-inset-top));
   left: 8px;
   right: 8px;
   z-index: 2;
@@ -282,36 +250,4 @@
 
 .root .actionGhost {
   color: var(--dim);
-}
-
-/* Bubbles rise from where something happened in the app up to the fish. */
-
-.bubbles {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  pointer-events: none;
-}
-
-.bubble {
-  position: absolute;
-  top: 0;
-  left: 0;
-  border: 1px solid #fff;
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 30%, rgb(255 255 255 / 55%) 0 14%, transparent 16%);
-  opacity: 0;
-  will-change: transform, opacity;
-}
-
-.faint {
-  border-color: rgb(255 255 255 / 50%);
-  background: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ripple {
-    animation: none;
-    opacity: 0;
-  }
 }

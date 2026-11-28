@@ -1,14 +1,16 @@
 "use client";
 
 import { useFrame, useLoader } from "@react-three/fiber";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { type Group, MathUtils, MeshStandardMaterial, SRGBColorSpace, TextureLoader } from "three";
+import { useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { Color, type Group, MathUtils, MeshStandardMaterial, SRGBColorSpace, TextureLoader } from "three";
 import type { Genome } from "@/lib/protocol";
 import { bettaBodyColor, createBettaMaterial, MAX_MARKS } from "./bettaMaterial";
 import { BODY_REST_PITCH, body, eyeball, fins, pairedFins } from "./bettaMesh";
 
 const ATLAS = "/betta-uv.webp";
 const eye = new MeshStandardMaterial({ color: "#110c25", roughness: 0.22 });
+const grayEye = new Color("#151515");
+const grayEyeRim = new Color("#929292");
 const eyeRim = new MeshStandardMaterial({ color: "#9d82dc", roughness: 0.38 });
 /**
  * Another betta's colour this one carries: `u` along the body (0 tail … 1 nose),
@@ -41,12 +43,15 @@ export function useBettaAtlas() {
  * "still" holds that level side view without moving (the card's picture).
  * `marks`: read every frame; patches of other bettas' colour on the body.
  */
-export function BettaModel({ genome, seed, size, followHeading = false, growth, calm, marks }: {
+export function BettaModel({ genome, seed, size, followHeading = false, growth, calm, marks, juvenile = false, children }: {
   genome: Genome;
   seed: string;
   size: number;
   followHeading?: boolean;
   growth?: number;
+  /** Projection fry start grey and gain the adult atlas colours as they mature. */
+  juvenile?: boolean;
+  children?: ReactNode;
   calm?: "drift" | "still";
   marks?: () => readonly BettaMark[] | undefined;
 }) {
@@ -99,11 +104,19 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
       }
     }
     if (growth !== undefined && scaled.current) {
-      const g = grown.current = MathUtils.damp(grown.current, growth, 2.5, delta);
-      scaled.current.scale.setScalar(size * (0.35 + 0.65 * g));
+      const g = grown.current = MathUtils.damp(grown.current, growth, juvenile ? 5 : 2.5, delta);
+      const frySize = juvenile ? 0.30 : 0.35;
+      scaled.current.scale.setScalar(size * MathUtils.lerp(frySize, 1, g));
       for (const { uniforms } of [skin, membrane]) {
-        uniforms.bettaFinLength.value = 0.72 + finLength * 0.4 * g;
+        uniforms.bettaFinLength.value = juvenile
+          ? MathUtils.lerp(0.58, 0.72 + finLength * 0.4, g)
+          : 0.72 + finLength * 0.4 * g;
         uniforms.bettaStrength.value = (0.44 + saturation * 0.43) * (0.25 + 0.75 * g);
+        uniforms.bettaGray.value = juvenile ? 1 - g : 0;
+      }
+      if (juvenile) {
+        eyeMaterial.color.copy(grayEye).lerp(eye.color, g);
+        eyeRimMaterial.color.copy(grayEyeRim).lerp(eyeRim.color, g);
       }
     }
     if (calm) {
@@ -139,7 +152,7 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
   });
 
   return (
-    <group ref={scaled} scale={size}>
+    <group ref={scaled} scale={juvenile && growth !== undefined ? size * MathUtils.lerp(0.3, 1, grown.current) : size}>
       <group ref={fish} position-x={0.24}>
         <mesh geometry={body} material={skin.material} />
         {fins.map((geometry, i) => <mesh key={geometry.id} geometry={geometry} material={membrane.material} renderOrder={i + 1} />)}
@@ -155,6 +168,7 @@ export function BettaModel({ genome, seed, size, followHeading = false, growth, 
             ))}
           </group>
         ))}
+        {children}
       </group>
     </group>
   );
