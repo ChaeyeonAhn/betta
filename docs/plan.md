@@ -41,7 +41,7 @@ Admin keys on `/screen` (only with `?key=<ADMIN_KEY>` when the server has one; s
 
 - **Late visitors** get their own OK prompt and feed clock. Those seated during creation appear as fry in available cells. Visitors joining the open tank complete the feed and enter from a side edge.
 - **Completion** happens in the assigned cell when the feed ends. Everyone can see an individual adult while others continue creating.
-  - Not built yet: the single cube a late betta should break out of on its own (lower threshold, own timeout).
+  - A late visitor who finishes with no seat has no cell to break: in `grid` they help break the others' (Helper view). Not built yet: a single cube of their own to break out of.
 - **Rejoining** with the same phone identity resumes its active feed and seat during the reconnect window. Disconnected phones do not block the group from advancing.
   - Not built yet: the visual fade on the screen.
 - **Admin reset**: between rounds. Reset keeps connected phones and clears what they did.
@@ -59,7 +59,7 @@ Admin keys on `/screen` (only with `?key=<ADMIN_KEY>` when the server has one; s
 
 **The server owns the session; the screen owns the physics.**
 
-- **Server (authoritative)**: stage, players, each player's raw input and genome, the shared effort, timers. **Genomes are computed on the server only.** A sleeping phone or a reloaded screen recovers from the next `state`.
+- **Server (authoritative)**: stage, players, each player's raw input and genome, each cell's taps and who is helping which cell, timers. **Genomes are computed on the server only.** A sleeping phone or a reloaded screen recovers from the next `state`.
 - **Screen**: betta positions, schooling, personal space, water current, rendering. The server doesn't know positions; it only relays steering.
 - **Phone**: input device. `playerId` lives in localStorage, so a reconnect returns to the same betta.
 
@@ -110,7 +110,7 @@ The server keeps each visitor’s seat, start time and feed events for the round
 - **Grid, cell by cell** (server `breakCell`, `GridTank` `FreeBetta`, `app/phone/Helper.tsx`): each grown betta with a seat has a cell to break at `TAPS_PER_PLAYER` (30) taps; no leak. A tap goes to the visitor's own glass, or once they are out (`broken`, or a late visitor with no seat) to the cell they are `helping`. On a break the server points the owner and that cell's helpers at the nearest closed cell. On the projection a broken cell loses its front edges and cracks, and its betta swims out to a spot in front of the helped cell's glass (`helperSpot`, spread by id). On the phone, the Helper view looks at the helped cell from outside (with its cracks); a hard tilt (60% of the range, re-armed when level) or a swipe moves to the nearest closed cell that way (`help { slot }`), and chevrons show where there is one. The tank opens when the last cell breaks, or after 60s.
 - **Icons, not words** (`app/_components/Hint.tsx`): a white-line icon fades in every 3s and acts out what to do: `turn` (phone rocking: lobby, inside the cell), `tap` (finger: grid, phone and projection), `steer` (dot circling a ring: open on the projection).
 - **open** (`Open.tsx`, `WaterTank.tsx`, `waterCurrent.ts`, `app/phone/controls/TiltConsole.tsx`, `app/phone/useTilt.ts`): **the handoff**: `Screen.tsx` keeps the same grid element (same canvas, nothing reloads) over the open tank. The grid's freed bettas write where they show on the projection and how big into a shared map (`GridHandoff`); the open tank starts each betta there (or at its cell's centre), at the depth that keeps its size, and holds everyone still until it has drawn its first frames (`onReady`). Only then does the grid drop its water, its bettas fade out (0.7s) over their open-tank copies and its cages fade away (2.2s), so nothing jumps back to its cell. **Tilt steering**: however the phone is held when the console opens is level; right edge down → right, top edge away → down, toward you → up, full at 24°, dead zone 12%. `useTilt` reads the direction of "up" in the phone's frame (not raw beta/gamma, which flip when upright). The console shows a dot in a ring like a spirit level, and the chevron on the side it leans to lights up; a tap recalibrates (and grants iOS motion access); without a sensor, dragging the ring steers. −1…1 at ~20Hz, the strongest force. Late bettas enter from a side edge.
-- **Betta card** (`app/phone/card/`): 90s after a visitor enters `open` (`openUntil`), the joystick is replaced by their card. A hidden canvas renders the betta once (`CardSnapshot`), `composeCard` draws a 1080 × 1350 PNG (black, white lines, the betta, tag, date, trait lines from `traits.ts`). Save downloads it; Share uses the Web Share API with the file (on iOS Save also goes through the share sheet, which has "Save Image"). Same card for A and B.
+- **Betta card** (`app/phone/card/`): 90s after a visitor enters `open` (`openUntil`), the tilt console is replaced by their card. A hidden canvas renders the betta once (`CardSnapshot`), `composeCard` draws a 1080 × 1350 PNG (black, white lines, the betta, tag, date, trait lines from `traits.ts`). Save downloads it; Share uses the Web Share API with the file (on iOS Save also goes through the share sheet, which has "Save Image"). Same card for A and B.
 
 ### 2-4. Behaviour in open (built)
 
@@ -134,11 +134,11 @@ The server keeps each visitor’s seat, start time and feed events for the round
 | phone → server → screen | `steer` | `{ x, y }`, relayed with `playerId`; server only relays |
 | screen → server | `hello` | `{ role: "screen", room, adminKey? }` |
 | screen → server | `admin` | `next` / `goto` / `reset` / `prune` |
-| server → all | `state` | `SessionState`: `{ roundId, room, stage, players[], effort{total, threshold}, deadline, fillAt, gridSize }` (throttled to 100ms) |
+| server → all | `state` | `SessionState`: `{ roundId, serverNow, room, stage, players[], effort{total, threshold}, deadline, fillAt, gridSize }` (throttled to 100ms) |
 | server → phone | `rejected` | `{ reason }` (wrong room) |
 
 - `players[]`: `{ id, connected, phase, feedStartedAt, done, genome, released, slot, openUntil, effort, broken, helping }`. `effort` = taps on that player's cell (from anyone); `effort.total/threshold` in `SessionState` sum the cells.
-- The server supplies `serverNow` and each player’s `feedStartedAt` so a phone can resume its own clock. `gridSize` controls the front lattice capacity. The legacy `fillAt` field stays null.
+- The server supplies `serverNow` and each player’s `feedStartedAt` so a phone can resume its own clock. `gridSize` controls the front lattice capacity. `fillAt` is the born stage's fill clock (server epoch; the screen subtracts its clock offset), null in every other stage.
 - `phase`: `waiting` / `input` / `caged` / `free` / `fading`. Players can be in different phases because of late joiners.
 
 ### 2-6. Lobby: SNS icons on the water (planned 11/27)
@@ -209,9 +209,9 @@ Not created yet: `scripts/bots.ts` (N fake phones for a 15–20 person test alon
 | 11/22 | First-person cell view on the phone, icon hints, camera pull-back fill, card polish, Mode B removed; real-device check of the feed, motion access and the card (iOS share sheet) | In progress |
 | 11/23 | `bots.ts` with 15–20 phones, real iOS and Android devices, leave → fade, repeated resets | Demo: repeated rounds without breaks |
 | 11/27 | Landing page (title, small QR, joined count), SNS icons floating on the lobby water with the dive, review fixes (projection outline above the entry layer, lobby before the first snapshot) | Done |
-| 11/29 | Creation on the projection (Codex); landing drop + splash, rising reactions incl. scrolling, fill restored, cell-by-cell breaking with helpers (no gauge), seamless grid → open handoff, tilt steering, colour on any meeting | Done (headless check; real phones not yet) |
+| 11/29 | Creation on the projection (Codex); landing drop + splash, rising reactions incl. scrolling, fill restored, cell-by-cell breaking with helpers (no gauge), seamless grid → open handoff, tilt steering, colour on any meeting. Deployed (EC2 + Vercel, `52421e9`) | Done (headless check; real phones not yet) |
 
-If time runs short, drop in this order: colour bleed → late-joiner single cube (join only in the lobby instead) → number of axes the feed covers.
+If time runs short, drop in this order: late-joiner single cube (join only in the lobby instead) → number of axes the feed covers.
 
 ## 5. Risks / notes
 
@@ -222,7 +222,7 @@ If time runs short, drop in this order: colour bleed → late-joiner single cube
 - **Server redeploy = session reset.** State is in memory only; don't redeploy during the exhibition.
 - **Room code and admin key**: the server rejects other rooms; admin commands need `ADMIN_KEY` (`/screen?key=…`). Without it the screen is read-only. CORS allows only `ALLOWED_ORIGINS` (the Vercel URL).
 - **Load**: `state` is broadcast at most every 100ms. Each 3D betta is its own mesh; check frame rate on the projection machine with 20+ bettas.
-- **Orientation sensor** needs HTTPS (the Vercel URL; not the LAN `http://` dev URL) and, on iOS, a tap to grant motion access: the first tap on the phone asks. Nothing on screen says to tap, so an iPhone that never taps in the lobby only gets to look around once it taps in the cell. Check on real devices, along with the frame rate of the cell view (hundreds of placeholder cubes + every visitor's betta) on mid-range phones.
+- **Orientation sensor** (looking around in the lobby and the cell, picking a cell in the Helper view, steering in open) needs HTTPS (the Vercel URL; not the LAN `http://` dev URL) and, on iOS, a tap to grant motion access: the first tap on the phone asks. The feed's OK tap or a glass tap usually grants it before it matters; the tilt console shows a tap icon until the sensor speaks, and any tap there also recalibrates. Tilt steering and the Helper's tilt thresholds (24° full range, 60% to move a cell) are untested on real phones. Check on real devices, along with the frame rate of the cell view (hundreds of placeholder cubes + every visitor's betta) on mid-range phones.
 - **Haptics**: `navigator.vibrate` works on Android Chrome only.
 - **Next 16.4.3 security notice**: check for a patch release before the exhibition.
 - **R3F copies shader uniforms.** `<shaderMaterial uniforms={u}>` copies each entry into the material's own objects (R3F `applyProps`), so mutating `u` afterwards changes nothing on that material. `EntryWater` keeps one shared clock (`waterTime`, `diveProgress`), updates it first each frame, and copies it into the pool material; the icon materials are built with `new ShaderMaterial` and hold the clock's objects directly. Sharing the prop object instead left the icons frozen at time 0 and never diving (fixed 11/27).
